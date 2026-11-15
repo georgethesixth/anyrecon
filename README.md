@@ -2,6 +2,8 @@
 
 **Reconcile any set of documents. You choose which documents pair; the engine finds the identifiers and runs the match.**
 
+**▶ Try it now: [anyrecon.vercel.app](https://anyrecon.vercel.app)**. Runs in your browser; your files are never uploaded.
+
 ![Identifier discovery: ranked candidates with coverage and examples](docs/screenshot_setup.png)
 
 Drop in a processor export (CSV), a general ledger (Excel), a bank statement (PDF, even scanned), a settlement
@@ -30,7 +32,7 @@ report (JSON), as many as you need. For each pair you choose, anyrecon:
 | | **Browser** | **Desktop** | **Server** |
 |---|---|---|---|
 | Best for | Anyone, including locked-down work laptops | Large files, scanned documents | IT teams serving a whole organisation |
-| Install | None: open the link | Python, once | Docker |
+| Install | None: [open the link](https://anyrecon.vercel.app) | Python, once | Docker |
 | Your files | Stay in the browser tab | Stay on your computer | Stay on your company's server |
 | Scanned documents | – | ✓ | ✓ |
 | AI commentary | – | Optional | Optional |

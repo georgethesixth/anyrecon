@@ -7,7 +7,7 @@ only allows it to load its own files.
 
 ## Use it
 
-1. Open the anyrecon link (e.g. on kemdi.co) in Chrome or Edge.
+1. Open **[anyrecon.vercel.app](https://anyrecon.vercel.app)** in Chrome or Edge.
 2. Wait for the first load (about a minute; later visits are quick).
 3. Drag in your files, or click **Try it with sample data**.
 
