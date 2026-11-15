@@ -99,6 +99,11 @@ scanned images. anyrecon:</p>
 </table>
 <h2 id="data-handling">Data handling</h2>
 <p>This section answers: where does a file go, what is kept, and what could leave the machine?</p>
+<h3 id="choose-files-is-not-an-upload">"Choose files" is not an upload</h3>
+<p>In the Browser edition, picking or dragging in a file lets the page <em>open</em> it, the way a desktop program opens a
+file from your disk. The file is read into memory inside the tab and processed there; it is never sent anywhere.
+Quick proof: wait for <strong>Ready</strong> in the top bar, switch off your internet connection, and reconcile. It still works.
+The picker says so in each edition (Streamlit's default "Upload" label is replaced in <code>ui_theme.css()</code>).</p>
 <h3 id="the-lifecycle-of-a-file">The lifecycle of a file</h3>
 <table>
 <thead>

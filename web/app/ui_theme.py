@@ -146,8 +146,25 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 """
 
 
-def css(_font_base=None) -> str:
-    return f"<style>{BASE_CSS}{ST_CSS}{CONN_CSS}</style>"
+# What the file picker says. Streamlit's default ("Upload", "200MB per file") suggests files leave the
+# machine, which in the Browser and Desktop editions they never do.
+PICKER_NOTE = {
+    "Browser": "or drag them here. They open in this browser tab and are never uploaded.",
+    "Desktop": "or drag them here. They open on this computer and are never sent anywhere.",
+    "Server": "or drag them here. They go to your organisation's anyrecon server only, and are not stored.",
+}
+
+
+def css(edition: str = "Desktop") -> str:
+    note = PICKER_NOTE.get(edition, PICKER_NOTE["Desktop"]).replace('"', "")
+    picker = (
+        '[data-testid="stFileUploaderDropzone"] button span:has(>[data-testid="stIconMaterial"]){display:none!important}'
+        '[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p{font-size:0!important;line-height:0}'
+        '[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after{content:"Choose files";font-size:14.5px;line-height:1.4}'
+        '[data-testid="stFileUploaderDropzoneInstructions"] span{font-size:0!important}'
+        f'[data-testid="stFileUploaderDropzoneInstructions"] span::after{{content:"{note}";font-size:14px;color:var(--muted)}}'
+    )
+    return f"<style>{BASE_CSS}{ST_CSS}{CONN_CSS}{picker}</style>"
 
 
 def esc(s) -> str:

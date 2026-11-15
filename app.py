@@ -41,7 +41,7 @@ WHERE = {"Browser": "Runs inside this browser tab. Files are never uploaded.",
          "Server": "Hosted by your organisation."}.get(EDITION, "")
 
 st.set_page_config(page_title="anyrecon", page_icon="◯", layout="wide", initial_sidebar_state="collapsed")
-st.markdown(ui.css(), unsafe_allow_html=True)
+st.markdown(ui.css(EDITION), unsafe_allow_html=True)
 
 ss = st.session_state
 # Browser edition: the page already showed the landing (static HTML) while Python loaded, so open on the work view.

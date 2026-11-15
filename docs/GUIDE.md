@@ -61,6 +61,13 @@ These are the rules every change should keep.
 
 This section answers: where does a file go, what is kept, and what could leave the machine?
 
+### "Choose files" is not an upload
+
+In the Browser edition, picking or dragging in a file lets the page *open* it, the way a desktop program opens a
+file from your disk. The file is read into memory inside the tab and processed there; it is never sent anywhere.
+Quick proof: wait for **Ready** in the top bar, switch off your internet connection, and reconcile. It still works.
+The picker says so in each edition (Streamlit's default "Upload" label is replaced in `ui_theme.css()`).
+
 ### The lifecycle of a file
 
 | Stage | What happens | Where the data is |
