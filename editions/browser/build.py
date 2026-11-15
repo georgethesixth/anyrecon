@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -46,53 +47,55 @@ CSP = ("default-src 'self'; script-src 'self' blob: data: 'wasm-unsafe-eval' 'un
        "object-src 'none'; base-uri 'none'; form-action 'none'")
 
 
-# One calm loading screen in the Monogram style. It covers stlite's own boot steps and fades out
-# only once the app has drawn its first screen (the app marks it with the class "ar-ready").
-BOOT_CSS = """
-@font-face{font-family:"Cormorant Garamond";font-style:normal;font-weight:400;font-display:swap;src:url("fonts/cormorant-garamond-latin-400-normal.woff2") format("woff2")}
-@font-face{font-family:"Cormorant Garamond";font-style:italic;font-weight:400;font-display:swap;src:url("fonts/cormorant-garamond-latin-400-italic.woff2") format("woff2")}
-@font-face{font-family:"Cormorant Garamond";font-style:normal;font-weight:500;font-display:swap;src:url("fonts/cormorant-garamond-latin-500-normal.woff2") format("woff2")}
-@font-face{font-family:"Cormorant Garamond";font-style:italic;font-weight:500;font-display:swap;src:url("fonts/cormorant-garamond-latin-500-italic.woff2") format("woff2")}
-@font-face{font-family:"Geist";font-style:normal;font-weight:300;font-display:swap;src:url("fonts/geist-sans-latin-300-normal.woff2") format("woff2")}
-@font-face{font-family:"Geist";font-style:normal;font-weight:400;font-display:swap;src:url("fonts/geist-sans-latin-400-normal.woff2") format("woff2")}
-@font-face{font-family:"Geist";font-style:normal;font-weight:500;font-display:swap;src:url("fonts/geist-sans-latin-500-normal.woff2") format("woff2")}
-html,body{margin:0;background:#F2F0EA}
-#loader{position:fixed;inset:0;z-index:2147483647;background:#F2F0EA;color:#25231F;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  text-align:center;padding:24px;font-family:"Geist",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;transition:opacity .6s ease}
-#loader.gone{opacity:0;pointer-events:none}
-.ld-mark{width:112px;height:112px;border-radius:50%;border:1px solid #B9B3A7;display:grid;place-items:center;font-family:"Cormorant Garamond",Georgia,serif;
-  font-size:42px;color:#3A372F;animation:breathe 3.2s ease-in-out infinite}
-.ld-mark i{font-style:italic}
-.ld-name{margin-top:34px;font-size:13px;letter-spacing:.32em;text-transform:uppercase;font-weight:500}
-.ld-msg{margin-top:14px;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:22px;color:#7A7468;min-height:1.4em;transition:opacity .4s ease}
-.ld-msg.out{opacity:0}
-.ld-track{width:180px;height:1px;background:#DDD8CD;margin-top:30px;overflow:hidden}
-.ld-track span{display:block;height:100%;width:0;background:#25231F;transition:width .3s linear}
-.ld-sub{margin-top:28px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#A39D90;max-width:30em;line-height:1.8}
-@keyframes breathe{0%,100%{opacity:1}50%{opacity:.55}}
-@media (prefers-reduced-motion:reduce){.ld-mark{animation:none}#loader,.ld-msg{transition:none}}
+# The landing page is plain HTML shown immediately; the Python engine starts underneath it.
+# Visitors read the page while it loads. If they click before it's ready, the button says so and
+# carries on by itself once the app has drawn its first screen (marked with the class "ar-ready").
+LANDING_CSS = """
+html,body{margin:0;background:#fff}
+html.landing body{overflow:hidden}
+#landing{position:fixed;inset:0;z-index:2147483646;overflow-y:auto;background:#fff;color:var(--ink);font-family:var(--font);
+  -webkit-font-smoothing:antialiased;transition:opacity .2s ease}
+#landing.gone{opacity:0;pointer-events:none}
+.ar-status{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);padding:5px 10px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}
+.ar-status em{font-style:normal}
+.ar-status i{width:7px;height:7px;border-radius:50%;background:#D9A23A;animation:arpulse 1.4s ease-in-out infinite}
+.ar-status.ok i{background:var(--ok);animation:none}
+.ar-btn .spin{width:14px;height:14px;box-sizing:border-box;margin:-2px 0;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:arspin .8s linear infinite}
+@keyframes arpulse{50%{opacity:.35}}
+@keyframes arspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ar-status i,.ar-btn .spin{animation:none}#landing{transition:none}}
 """
 
-BOOT_LOADER_JS = r"""
+LANDING_JS = r"""
 (() => {
-  const ov = document.getElementById("loader"), bar = document.getElementById("ldbar"), msg = document.getElementById("ldmsg");
-  if (!ov) return;
-  const steps = ["Preparing the engine in your browser", "Loading the matching engine", "Setting up the document readers", "Almost ready"];
-  const t0 = performance.now(); let i = 0, done = false;
-  const tick = () => { if (done) return; const s = (performance.now() - t0) / 1000; bar.style.width = (92 * (1 - Math.exp(-s / 20))) + "%"; requestAnimationFrame(tick); };
-  requestAnimationFrame(tick);
-  const rotate = setInterval(() => {
-    if (i >= steps.length - 1) return; i++;
-    msg.classList.add("out"); setTimeout(() => { msg.textContent = steps[i]; msg.classList.remove("out"); }, 400);
-  }, 8000);
-  const finish = () => {
-    if (done) return; done = true; clearInterval(rotate); bar.style.width = "100%";
-    setTimeout(() => { ov.classList.add("gone"); setTimeout(() => ov.remove(), 700); }, 400);
+  const land = document.getElementById("landing"), root = document.getElementById("root"), st = document.getElementById("arStatus");
+  if (!land) return;
+  let ready = false, pending = null;
+  const status = (cls, text) => { if (st) { st.className = "ar-status " + cls; st.querySelector("em").textContent = text; } };
+  const enter = (go) => {
+    document.documentElement.classList.remove("landing");
+    land.classList.add("gone"); setTimeout(() => { land.hidden = true; }, 250); window.scrollTo(0, 0);
+    if (go === "sample") {   // press the app's own sample button
+      const t0 = Date.now(), iv = setInterval(() => {
+        const b = root.querySelector(".st-key-try2 button");
+        if (b) { clearInterval(iv); b.click(); } else if (Date.now() - t0 > 20000) clearInterval(iv);
+      }, 150);
+    }
   };
-  const ready = () => document.querySelector("#root .ar-ready");
-  const obs = new MutationObserver(() => { if (ready()) { obs.disconnect(); setTimeout(finish, 250); } });
-  obs.observe(document.getElementById("root"), { childList: true, subtree: true });
-  setTimeout(finish, 180000);  // never trap the visitor behind the loader
+  land.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-go]"); if (!b) return;
+    if (ready) return enter(b.dataset.go);
+    pending = b.dataset.go;
+    land.querySelectorAll("[data-go]").forEach((x) => { x.disabled = true; });
+    b.innerHTML = '<span class="spin"></span>Getting ready…';
+  });
+  const slow = setTimeout(() => { if (!ready) status("", "Preparing engine (first visit is slower)"); }, 25000);
+  const obs = new MutationObserver(() => {
+    if (!root.querySelector(".ar-ready")) return;
+    obs.disconnect(); clearTimeout(slow); ready = true; status("ok", "Ready");
+    if (pending) enter(pending);
+  });
+  obs.observe(root, { childList: true, subtree: true });
 })();
 """
 
@@ -199,7 +202,6 @@ def main():
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
     log(f"{len(files)} app files")
-    shutil.copytree(ROOT / "static" / "fonts", out / "fonts")
 
     # 5. Page
     stl_files = {rel: {"url": f"./app/{rel}"} for rel in files}
@@ -212,39 +214,35 @@ def main():
         "requirements": [f"./wheels/{w}" for w in pure],
         "wheelUrls": {"streamlit": f"./stlite/wheels/{streamlit_whl}", "stliteLib": f"./stlite/wheels/{stlite_whl}"},
         "streamlitConfig": {"client.toolbarMode": "minimal", "browser.gatherUsageStats": False,
-                            "theme.base": "light", "theme.primaryColor": "#3A372F", "theme.backgroundColor": "#F2F0EA",
-                            "theme.secondaryBackgroundColor": "#ECE8DF", "theme.textColor": "#25231F", "theme.font": "sans serif"},
+                            "theme.base": "light", "theme.primaryColor": "#2457D6", "theme.backgroundColor": "#FFFFFF",
+                            "theme.secondaryBackgroundColor": "#F5F6F8", "theme.textColor": "#14171F", "theme.font": "sans serif"},
     }
+    sys.path.insert(0, str(ROOT))
+    import ui_theme as ui
+    version = re.search(r'__version__\s*=\s*"([^"]+)"', (ROOT / "anyrecon" / "__init__.py").read_text()).group(1)
+    landing = ui.landing_page("Browser", version, browser=True)
     html = f"""<!doctype html>
-<html lang="en">
+<html lang="en" class="landing">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="{CSP}">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="Reconcile any set of documents, in your browser. Files are never uploaded.">
-<meta name="theme-color" content="#F2F0EA">
+<meta name="theme-color" content="#FFFFFF">
 <title>anyrecon</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23F2F0EA' stroke='%2325231F' stroke-width='2'/%3E%3Ctext x='32' y='41' font-family='Georgia,serif' font-size='26' text-anchor='middle' fill='%2325231F'%3Ear%3C/text%3E%3C/svg%3E">
-<link rel="preload" href="./fonts/cormorant-garamond-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="./fonts/geist-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232457D6'/%3E%3Ctext x='32' y='42' font-family='Arial,sans-serif' font-weight='700' font-size='28' text-anchor='middle' fill='%23fff'%3Ear%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="./boot.css">
 <link rel="stylesheet" href="./stlite/stlite.css">
 </head>
 <body>
-<div id="loader" role="status" aria-live="polite">
-  <div class="ld-mark"><span>a<i>r</i></span></div>
-  <div class="ld-name">anyrecon</div>
-  <div class="ld-msg" id="ldmsg">Preparing the engine in your browser</div>
-  <div class="ld-track"><span id="ldbar"></span></div>
-  <div class="ld-sub">The first visit takes about a minute. Your files never leave this tab.</div>
-</div>
+<div id="landing">{landing}</div>
 <div id="root"></div>
 <script type="module" src="./boot.js"></script>
 </body>
 </html>
 """
-    (out / "boot.css").write_text(BOOT_CSS, encoding="utf-8")
+    (out / "boot.css").write_text(ui.BASE_CSS + LANDING_CSS, encoding="utf-8")
     (out / "index.html").write_text(html, encoding="utf-8")
     # external file: the security policy forbids inline scripts
     # Paths are made absolute at load time: the Python worker runs from a blob: URL, where "./x" resolves to nothing.
@@ -254,7 +252,7 @@ def main():
         'const abs = (v) => typeof v === "string" && v.startsWith("./") ? new URL(v, base).href\n'
         '  : Array.isArray(v) ? v.map(abs) : (v && typeof v === "object") ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, abs(x)])) : v;\n'
         f'const options = {json.dumps(opts, indent=1)};\n'
-        + BOOT_LOADER_JS +
+        + LANDING_JS +
         'mount(abs(options), document.getElementById("root"));\n', encoding="utf-8")
     # Response headers for hosts that support them (Netlify / Cloudflare Pages). These also cover the
     # Python worker, which a <meta> CSP does not reach.

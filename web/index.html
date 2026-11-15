@@ -1,27 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="landing">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: data: 'wasm-unsafe-eval' 'unsafe-eval'; worker-src 'self' blob: data:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="Reconcile any set of documents, in your browser. Files are never uploaded.">
-<meta name="theme-color" content="#F2F0EA">
+<meta name="theme-color" content="#FFFFFF">
 <title>anyrecon</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23F2F0EA' stroke='%2325231F' stroke-width='2'/%3E%3Ctext x='32' y='41' font-family='Georgia,serif' font-size='26' text-anchor='middle' fill='%2325231F'%3Ear%3C/text%3E%3C/svg%3E">
-<link rel="preload" href="./fonts/cormorant-garamond-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="./fonts/geist-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232457D6'/%3E%3Ctext x='32' y='42' font-family='Arial,sans-serif' font-weight='700' font-size='28' text-anchor='middle' fill='%23fff'%3Ear%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="./boot.css">
 <link rel="stylesheet" href="./stlite/stlite.css">
 </head>
 <body>
-<div id="loader" role="status" aria-live="polite">
-  <div class="ld-mark"><span>a<i>r</i></span></div>
-  <div class="ld-name">anyrecon</div>
-  <div class="ld-msg" id="ldmsg">Preparing the engine in your browser</div>
-  <div class="ld-track"><span id="ldbar"></span></div>
-  <div class="ld-sub">The first visit takes about a minute. Your files never leave this tab.</div>
-</div>
+<div id="landing"><div class="ar-wrap"><nav class="ar-nav"><a class="ar-logo" href="#"><b>ar</b>anyrecon</a><div class="ar-navlinks"><span class="ar-status" id="arStatus"><i></i><em>Preparing engine</em></span><a class="opt" href="#how">How it works</a><a class="opt" href="#data">Your data</a><a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">GitHub</a></div></nav><div class="ar-hero"><h1>Reconcile any set of documents.</h1><p>Add your files, choose which ones should agree, and anyrecon finds the references they share and matches them line by line. Anything that doesn't match comes with a reason.</p><div class="ar-actions"><button class="ar-btn primary" data-go="start">Start reconciling</button><button class="ar-btn" data-go="sample">Try with sample data</button></div><div class="ar-facts"><span>Runs in this browser tab</span><span>Files are never uploaded</span><span>Card numbers masked</span><span>Nothing stored</span></div></div><section class="ar-sec" id="how"><h2>How it works</h2><p>No setup and no account.</p><div class="ar-cards"><div class="ar-card"><span class="n">1</span><h3>Add your documents</h3><p>Processor exports, ledgers, bank statements, settlement reports. CSV, Excel, JSON or PDF. Multi-tab workbooks are fine.</p></div><div class="ar-card"><span class="n">2</span><h3>Choose the pairs</h3><p>Say what should agree with what, e.g. processor and bank. Three or more documents are linked into one view per transaction.</p></div><div class="ar-card"><span class="n">3</span><h3>Confirm the references</h3><p>anyrecon proposes the shared reference for each pair, even with prefixes, missing zeros or references buried in narrations. Ranked, with examples.</p></div><div class="ar-card"><span class="n">4</span><h3>Review the breaks</h3><p>Missing items, amount differences, timing, duplicates and likely typos, each with a reason. Download the Excel report and an audit trail.</p></div></div></section><section class="ar-sec" id="data"><h2>Your data</h2><p>Built for card and bank data.</p><dl class="ar-dl"><dt>Where it runs</dt><dd>In this browser tab. Files are read here and never uploaded.</dd><dt>Card numbers</dt><dd>Masked to the first six and last four digits on load. Security codes and PIN data are removed.</dd><dt>What is kept</dt><dd>Nothing. Close the tab or clear the session and it&#x27;s gone.</dd><dt>How matching works</dt><dd>Fixed rules you can see, not guesses. Every match records the rule that made it.</dd></dl></section><footer class="ar-foot"><span>anyrecon 0.1.0 · Browser edition</span><span>A project by <a href="https://kemdi.co" target="_blank" rel="noopener">Kemdi Okoli</a> · <a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">Source on GitHub</a></span></footer></div></div>
 <div id="root"></div>
 <script type="module" src="./boot.js"></script>
 </body>

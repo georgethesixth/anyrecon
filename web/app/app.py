@@ -46,11 +46,11 @@ SAMPLE_FILES = [("processor", "processor.csv"), ("ledger", "ledger.xlsx"), ("ban
                 ("settlement", "settlement_report.json")] + ([] if BROWSER else [("scan", "scanned_statement.png")])
 
 st.set_page_config(page_title="anyrecon", page_icon="◯", layout="wide", initial_sidebar_state="collapsed")
-# Browser edition: fonts are declared by the page itself (same origin). Desktop/Server: served by Streamlit's static folder.
-st.markdown(ui.css(None if BROWSER else "app/static/fonts/"), unsafe_allow_html=True)
+st.markdown(ui.css(), unsafe_allow_html=True)
 
 ss = st.session_state
-ss.setdefault("view", "home")
+# Browser edition: the page already showed the landing (static HTML) while Python loaded, so open on the work view.
+ss.setdefault("view", "work" if BROWSER else "home")
 ss.setdefault("datasets", {})
 ss.setdefault("uploads", {})       # name -> (filename, bytes): held in memory only, never written to disk
 ss.setdefault("overrides", {})     # name -> {"mask": [...], "keep": [...]}
@@ -118,13 +118,15 @@ if ss.view == "home":
     st.stop()
 
 # ---------------------------------------------------------------- work area
-stage = 4 if "results" in ss else 3 if ss.get("pairs_sel") else 2 if len(ss.datasets) >= 2 else 1
-b1, b2, b3 = st.columns([1, 9, 2], vertical_alignment="center")
-if b1.button("ar", key="go_home", help="Back to the start page"):
-    ss.view = "home"; st.rerun()
-b2.markdown(ui.steps_bar(stage), unsafe_allow_html=True)
-if b3.button("Clear all", key="clear", help="Remove every file and result from this session"):
-    _clear(); st.rerun()
+stage = 4 if "results" in ss else 3 if ss.get("pairs_sel") else 2 if max(len(ss.datasets), len(ss.uploads)) >= 2 else 1
+with st.container(key="topbar"):
+    b1, b2, b3 = st.columns([2, 8, 2], vertical_alignment="center")
+    if b1.button("anyrecon", key="go_home", help="Back to the start page"):
+        ss.view = "home"; st.rerun()
+    b2.markdown(ui.steps_bar(stage), unsafe_allow_html=True)
+    with b3.container(key="clear"):
+        if st.button("Clear all", help="Remove every file and result from this session"):
+            _clear(); ss.view = "work"; st.rerun()
 
 st.markdown(ui.step_head(1, "Your documents", "Add two or more. CSV, Excel, JSON or PDF"
                          + ("." if BROWSER else ", including scans and photos.")), unsafe_allow_html=True)
@@ -325,9 +327,9 @@ if "results" in ss:
         t3.dataframe(r.left_unmatched, width="stretch", hide_index=True)
         t4.dataframe(r.right_unmatched, width="stretch", hide_index=True)
     if chain is not None:
-        st.markdown(f'<div class="ar-pair">Across all documents <i>· one row per {ui.esc(chain.anchor.iloc[0])} item</i></div>',
+        st.markdown(f'<div class="ar-pair">Across all documents<small>one row per {ui.esc(chain.anchor.iloc[0])} item</small></div>',
                     unsafe_allow_html=True)
-        st.bar_chart(chain.status.value_counts(), color="#3A372F")
+        st.bar_chart(chain.status.value_counts(), color=ui.ACCENT)
         st.dataframe(chain, width="stretch", hide_index=True)
     if llm.available() and st.button("Explain these results (AI)"):
         st.write(llm.explain(results))

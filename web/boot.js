@@ -91,32 +91,42 @@ const options = {
   "client.toolbarMode": "minimal",
   "browser.gatherUsageStats": false,
   "theme.base": "light",
-  "theme.primaryColor": "#3A372F",
-  "theme.backgroundColor": "#F2F0EA",
-  "theme.secondaryBackgroundColor": "#ECE8DF",
-  "theme.textColor": "#25231F",
+  "theme.primaryColor": "#2457D6",
+  "theme.backgroundColor": "#FFFFFF",
+  "theme.secondaryBackgroundColor": "#F5F6F8",
+  "theme.textColor": "#14171F",
   "theme.font": "sans serif"
  }
 };
 
 (() => {
-  const ov = document.getElementById("loader"), bar = document.getElementById("ldbar"), msg = document.getElementById("ldmsg");
-  if (!ov) return;
-  const steps = ["Preparing the engine in your browser", "Loading the matching engine", "Setting up the document readers", "Almost ready"];
-  const t0 = performance.now(); let i = 0, done = false;
-  const tick = () => { if (done) return; const s = (performance.now() - t0) / 1000; bar.style.width = (92 * (1 - Math.exp(-s / 20))) + "%"; requestAnimationFrame(tick); };
-  requestAnimationFrame(tick);
-  const rotate = setInterval(() => {
-    if (i >= steps.length - 1) return; i++;
-    msg.classList.add("out"); setTimeout(() => { msg.textContent = steps[i]; msg.classList.remove("out"); }, 400);
-  }, 8000);
-  const finish = () => {
-    if (done) return; done = true; clearInterval(rotate); bar.style.width = "100%";
-    setTimeout(() => { ov.classList.add("gone"); setTimeout(() => ov.remove(), 700); }, 400);
+  const land = document.getElementById("landing"), root = document.getElementById("root"), st = document.getElementById("arStatus");
+  if (!land) return;
+  let ready = false, pending = null;
+  const status = (cls, text) => { if (st) { st.className = "ar-status " + cls; st.querySelector("em").textContent = text; } };
+  const enter = (go) => {
+    document.documentElement.classList.remove("landing");
+    land.classList.add("gone"); setTimeout(() => { land.hidden = true; }, 250); window.scrollTo(0, 0);
+    if (go === "sample") {   // press the app's own sample button
+      const t0 = Date.now(), iv = setInterval(() => {
+        const b = root.querySelector(".st-key-try2 button");
+        if (b) { clearInterval(iv); b.click(); } else if (Date.now() - t0 > 20000) clearInterval(iv);
+      }, 150);
+    }
   };
-  const ready = () => document.querySelector("#root .ar-ready");
-  const obs = new MutationObserver(() => { if (ready()) { obs.disconnect(); setTimeout(finish, 250); } });
-  obs.observe(document.getElementById("root"), { childList: true, subtree: true });
-  setTimeout(finish, 180000);  // never trap the visitor behind the loader
+  land.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-go]"); if (!b) return;
+    if (ready) return enter(b.dataset.go);
+    pending = b.dataset.go;
+    land.querySelectorAll("[data-go]").forEach((x) => { x.disabled = true; });
+    b.innerHTML = '<span class="spin"></span>Getting ready…';
+  });
+  const slow = setTimeout(() => { if (!ready) status("", "Preparing engine (first visit is slower)"); }, 25000);
+  const obs = new MutationObserver(() => {
+    if (!root.querySelector(".ar-ready")) return;
+    obs.disconnect(); clearTimeout(slow); ready = true; status("ok", "Ready");
+    if (pending) enter(pending);
+  });
+  obs.observe(root, { childList: true, subtree: true });
 })();
 mount(abs(options), document.getElementById("root"));

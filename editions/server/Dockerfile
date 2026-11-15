@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr \
 WORKDIR /app
 COPY pyproject.toml README.md app.py ui_theme.py ./
 COPY .streamlit ./.streamlit
-COPY static ./static
 COPY anyrecon ./anyrecon
 COPY examples/__init__.py examples/generate_samples.py ./examples/
 RUN pip install --no-cache-dir ".[ui,ocr]" && useradd --system --uid 10001 anyrecon
