@@ -65,6 +65,8 @@ BASE_CSS = """
 .ar-step h2{font-size:22px!important;font-weight:650!important;letter-spacing:-.01em;color:var(--ink);margin:4px 0 2px!important;padding:0!important}
 .ar-step p{color:var(--muted);font-size:15px;margin:0}
 .ar-note{color:var(--muted);font-size:14px;margin:6px 0 0}
+.ar-results h2{font-size:22px!important;font-weight:650!important;margin:28px 0 2px!important;padding:0!important;color:var(--ink)}
+.ar-results p{color:var(--muted);font-size:15px;margin:0}
 .ar-pair{font-size:17px;font-weight:650;color:var(--ink);margin:30px 0 8px}
 .ar-pair span{color:var(--faint);font-weight:400;margin:0 6px}
 .ar-pair small{color:var(--muted);font-weight:400;font-size:14px;margin-left:6px}
@@ -93,7 +95,9 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
   font-weight:500!important;padding:8px 14px!important;min-height:0!important;box-shadow:none!important}
 .stButton>button:hover,.stDownloadButton>button:hover{border-color:#C9CED6!important;background:var(--well)!important}
 .stButton>button[kind="primary"],[data-testid="stBaseButton-primary"]{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important}
-.stButton>button[kind="primary"] p{color:#fff!important}
+.stDownloadButton>button[kind="primary"]{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important}
+.stDownloadButton>button[kind="primary"]:hover{background:var(--accent-d)!important}
+.stButton>button[kind="primary"] p,.stDownloadButton>button[kind="primary"] p{color:#fff!important}
 .stButton>button[kind="primary"]:hover{background:var(--accent-d)!important}
 .stApp input,.stApp textarea,[data-baseweb="select"]>div,[data-baseweb="input"]>div{border-radius:8px!important}
 [data-baseweb="tag"]{border-radius:6px!important;background:var(--accent)!important}
@@ -114,7 +118,9 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 .st-key-go_home button{border:0!important;background:transparent!important;padding:4px 0!important;font-weight:650!important;font-size:17px!important}
 .st-key-go_home button p{font-weight:650!important;font-size:17px!important}
 .st-key-go_home button:hover{background:transparent!important;color:var(--accent)!important}
-.st-key-topbar{border-bottom:1px solid var(--line);padding-bottom:8px}
+.st-key-topbar{border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:0}
+.st-key-tools [data-testid="stCheckbox"],.st-key-tools .stToggle{margin:0}
+.st-key-downloads{gap:8px}
 .st-key-clear{align-items:flex-end}
 """
 

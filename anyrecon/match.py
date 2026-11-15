@@ -371,6 +371,7 @@ class Matcher:
         lm = float(matches.loc[ok, "left_amount"].fillna(0).sum())
         rm = float(matches.loc[ok, "right_amount"].fillna(0).sum())
         summary = dict(
+            detected_fee_pct=getattr(self, "detected_fee_pct", None),
             pair=f"{cfg.left} ⟷ {cfg.right}",
             left_rows=len(L.ids), right_rows=len(R.ids),
             matched_groups=int(ok.sum()), exception_groups=int((~ok).sum()),
@@ -390,6 +391,7 @@ class Matcher:
 
     def _insights(self, matches: pd.DataFrame) -> list[str]:
         out = []
+        self.detected_fee_pct = None
         var = matches[(matches.status == "amount_variance") & matches.left_amount.notna() & matches.right_amount.notna()]
         var = var[var.left_amount.astype(float) != 0]
         if len(var) >= 5:
@@ -397,6 +399,7 @@ class Matcher:
             med = float(pct.median())
             share = float((abs(pct - med) <= 0.05).mean())
             if share >= 0.7:
+                self.detected_fee_pct = round(-med, 2)
                 out.append(f"{share:.0%} of amount variances sit at {med:+.2f}% of the left amount: consistent with a percentage fee/MDR. "
                            f"Re-run with expected_fee_pct={-med:.2f} to reconcile net of fees.")
             diff = var.right_amount.astype(float) - var.left_amount.astype(float)

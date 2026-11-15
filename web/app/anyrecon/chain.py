@@ -27,12 +27,64 @@ def auto_config(left: Dataset, right: Dataset, date_window_days: int = 3, candid
     return cfg, cands
 
 
-def run_all(datasets: dict[str, Dataset], configs: list[PairConfig]) -> tuple[dict[str, PairResult], pd.DataFrame | None]:
+def pair_score(cands) -> float:
+    """How well two documents link: best identifier score, or a discounted amount+date pattern."""
+    keys = [c.score for c in cands if c.mode != "composite"]
+    comp = [c.score for c in cands if c.mode == "composite"]
+    return max(keys or [0.0]) if keys else 0.5 * max(comp or [0.0])
+
+
+def auto_pairs(datasets: dict[str, Dataset], candidates: dict | None = None, date_window_days: int = 3,
+               min_score: float = 0.3) -> list[tuple[str, str]]:
+    """Choose which documents to reconcile against each other: the strongest links that connect every
+    document once (a maximum spanning tree). Two documents give one pair; n give at most n-1."""
+    from itertools import combinations
+    names = list(datasets)
+    cands = candidates if candidates is not None else {}
+    edges = []
+    for a, b in combinations(names, 2):
+        if (a, b) not in cands:
+            cands[(a, b)] = discover(datasets[a], datasets[b], date_window_days=date_window_days)
+        s = pair_score(cands[(a, b)])
+        if s >= min_score:
+            edges.append((s, a, b))
+    parent = {n: n for n in names}
+
+    def root(n):
+        while parent[n] != n:
+            parent[n] = parent[parent[n]]
+            n = parent[n]
+        return n
+    chosen = []
+    for s, a, b in sorted(edges, reverse=True):
+        ra, rb = root(a), root(b)
+        if ra != rb:
+            parent[ra] = rb
+            chosen.append((a, b))
+    return chosen
+
+
+def reconcile_auto(left: Dataset, right: Dataset, cfg: PairConfig):
+    """Reconcile; if the breaks show a consistent percentage fee (e.g. MDR taken at settlement),
+    apply it and keep the re-run when it matches more."""
+    res = reconcile(left, right, cfg)
+    fee = res.summary.get("detected_fee_pct")
+    if fee and 0 < fee <= 20 and not cfg.expected_fee_pct:
+        from dataclasses import replace
+        cfg2 = replace(cfg, expected_fee_pct=fee)
+        res2 = reconcile(left, right, cfg2)
+        if res2.summary["matched_groups"] > res.summary["matched_groups"]:
+            return res2
+    return res
+
+
+def run_all(datasets: dict[str, Dataset], configs: list[PairConfig], auto_fee: bool = False) -> tuple[dict[str, PairResult], pd.DataFrame | None]:
     results: dict[str, PairResult] = {}
     for cfg in configs:
         if cfg.left not in datasets or cfg.right not in datasets:
             raise KeyError(f"pair {cfg.left} ⟷ {cfg.right}: dataset not loaded (have: {', '.join(datasets)})")
-        results[f"{cfg.left}⟷{cfg.right}"] = reconcile(datasets[cfg.left], datasets[cfg.right], cfg)
+        run = reconcile_auto if auto_fee else reconcile
+        results[f"{cfg.left}⟷{cfg.right}"] = run(datasets[cfg.left], datasets[cfg.right], cfg)
     chain = build_chains(datasets, results) if len(configs) > 1 else None
     return results, chain
 

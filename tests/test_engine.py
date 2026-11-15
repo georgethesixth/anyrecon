@@ -261,3 +261,28 @@ def test_composite_never_pairs_refund_with_sale():
     r = _pair({"amt": ["-100.00"], "d": ["2026-10-01"]}, {"amt": ["100.00"], "d": ["2026-10-01"]},
               keys=[], left_amount="amt", right_amount="amt", left_date="d", right_date="d")
     assert len(r.matches) == 0
+
+
+def test_auto_pairs_links_every_document_once():
+    from anyrecon.chain import auto_pairs
+    ids = [f"TX{1000 + i}" for i in range(40)]
+    a = _ds(pd.DataFrame({"ref": ids, "amount": [100.0 + i for i in range(40)]}), "a")
+    b = _ds(pd.DataFrame({"reference": ids, "value": [100.0 + i for i in range(40)]}), "b")
+    c = _ds(pd.DataFrame({"txn": ids[:30], "amt": [100.0 + i for i in range(30)]}), "c")
+    pairs = auto_pairs({"a": a, "b": b, "c": c})
+    assert len(pairs) == 2
+    linked = {n for p in pairs for n in p}
+    assert linked == {"a", "b", "c"}
+
+
+def test_percentage_fee_detected_and_applied():
+    from anyrecon.chain import reconcile_auto
+    ids = [f"TX{1000 + i}" for i in range(30)]
+    gross = [200.0 + 7 * i for i in range(30)]
+    a = _ds(pd.DataFrame({"ref": ids, "amount": gross}), "a")
+    b = _ds(pd.DataFrame({"ref": ids, "amount": [round(g * 0.985, 2) for g in gross]}), "b")
+    cfg = PairConfig(left="a", right="b", keys=[KeySpec("ref", "ref", "exact", "exact")], left_amount="amount", right_amount="amount")
+    assert reconcile(a, b, cfg).summary["detected_fee_pct"] == 1.5
+    res = reconcile_auto(a, b, cfg)
+    assert res.config.expected_fee_pct == 1.5
+    assert res.summary["matched_groups"] == 30
