@@ -1,0 +1,17 @@
+# Monogram theme (shared look across editions). Fonts are served from ./static by Streamlit.
+[server]
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#3A372F"
+backgroundColor = "#F2F0EA"
+secondaryBackgroundColor = "#ECE8DF"
+textColor = "#25231F"
+font = "sans serif"

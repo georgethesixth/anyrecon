@@ -50,6 +50,9 @@ const options = {
   "app.py": {
    "url": "./app/app.py"
   },
+  "ui_theme.py": {
+   "url": "./app/ui_theme.py"
+  },
   "examples/__init__.py": {
    "url": "./app/examples/__init__.py"
   },
@@ -85,8 +88,35 @@ const options = {
   "stliteLib": "./stlite/wheels/stlite_lib-0.1.0-py3-none-any.whl"
  },
  "streamlitConfig": {
-  "client.toolbarMode": "viewer",
-  "browser.gatherUsageStats": false
+  "client.toolbarMode": "minimal",
+  "browser.gatherUsageStats": false,
+  "theme.base": "light",
+  "theme.primaryColor": "#3A372F",
+  "theme.backgroundColor": "#F2F0EA",
+  "theme.secondaryBackgroundColor": "#ECE8DF",
+  "theme.textColor": "#25231F",
+  "theme.font": "sans serif"
  }
 };
+
+(() => {
+  const ov = document.getElementById("loader"), bar = document.getElementById("ldbar"), msg = document.getElementById("ldmsg");
+  if (!ov) return;
+  const steps = ["Preparing the engine in your browser", "Loading the matching engine", "Setting up the document readers", "Almost ready"];
+  const t0 = performance.now(); let i = 0, done = false;
+  const tick = () => { if (done) return; const s = (performance.now() - t0) / 1000; bar.style.width = (92 * (1 - Math.exp(-s / 20))) + "%"; requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  const rotate = setInterval(() => {
+    if (i >= steps.length - 1) return; i++;
+    msg.classList.add("out"); setTimeout(() => { msg.textContent = steps[i]; msg.classList.remove("out"); }, 400);
+  }, 8000);
+  const finish = () => {
+    if (done) return; done = true; clearInterval(rotate); bar.style.width = "100%";
+    setTimeout(() => { ov.classList.add("gone"); setTimeout(() => ov.remove(), 700); }, 400);
+  };
+  const ready = () => document.querySelector("#root .ar-ready");
+  const obs = new MutationObserver(() => { if (ready()) { obs.disconnect(); setTimeout(finish, 250); } });
+  obs.observe(document.getElementById("root"), { childList: true, subtree: true });
+  setTimeout(finish, 180000);  // never trap the visitor behind the loader
+})();
 mount(abs(options), document.getElementById("root"));

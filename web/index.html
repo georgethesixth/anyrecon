@@ -5,12 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: data: 'wasm-unsafe-eval' 'unsafe-eval'; worker-src 'self' blob: data:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
-<title>anyrecon · Browser edition</title>
+<meta name="description" content="Reconcile any set of documents, in your browser. Files are never uploaded.">
+<meta name="theme-color" content="#F2F0EA">
+<title>anyrecon</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23F2F0EA' stroke='%2325231F' stroke-width='2'/%3E%3Ctext x='32' y='41' font-family='Georgia,serif' font-size='26' text-anchor='middle' fill='%2325231F'%3Ear%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="./fonts/cormorant-garamond-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./fonts/geist-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./boot.css">
 <link rel="stylesheet" href="./stlite/stlite.css">
-<style>#boot{font:15px system-ui,sans-serif;max-width:560px;margin:15vh auto;color:#333;line-height:1.5}</style>
 </head>
 <body>
-<div id="root"><div id="boot"><b>anyrecon · Browser edition</b><br>Loading… the first visit downloads the engine (about a minute); later visits are fast.<br>Your files stay in this tab and are never uploaded.</div></div>
+<div id="loader" role="status" aria-live="polite">
+  <div class="ld-mark"><span>a<i>r</i></span></div>
+  <div class="ld-name">anyrecon</div>
+  <div class="ld-msg" id="ldmsg">Preparing the engine in your browser</div>
+  <div class="ld-track"><span id="ldbar"></span></div>
+  <div class="ld-sub">The first visit takes about a minute. Your files never leave this tab.</div>
+</div>
+<div id="root"></div>
 <script type="module" src="./boot.js"></script>
 </body>
 </html>

@@ -33,6 +33,8 @@ from anyrecon.pci import PCIBlocked
 from anyrecon.profile import profile
 from anyrecon.report import audit_json, write_excel
 
+import ui_theme as ui
+
 DEMO = os.environ.get("ANYRECON_DEMO") == "1"
 BROWSER = sys.platform == "emscripten"
 EDITION = "Browser" if BROWSER else os.environ.get("ANYRECON_EDITION", "Desktop").title()
@@ -43,36 +45,19 @@ SAMPLES = Path(__file__).parent / "examples" / "data"
 SAMPLE_FILES = [("processor", "processor.csv"), ("ledger", "ledger.xlsx"), ("bank", "bank_statement.pdf"),
                 ("settlement", "settlement_report.json")] + ([] if BROWSER else [("scan", "scanned_statement.png")])
 
-st.set_page_config(page_title=f"anyrecon · {EDITION}", layout="wide")
-st.title("anyrecon")
-st.caption(f"**{EDITION} edition** · v{__version__} · {WHERE}")
-
-with st.sidebar:
-    st.subheader("Settings")
-    pci_mode = st.selectbox("Card data handling", ["strict", "paranoid", "block"],
-                            help="strict: mask PANs, drop CVV/PIN/track data. paranoid: also mask PAN-shaped "
-                                 "references. block: refuse files containing card data.")
-    window = st.number_input("Date window (days)", 0, 30, 3)
-    tol = st.number_input("Amount tolerance (absolute)", 0.0, 1000.0, 0.01, step=0.01)
-    if DEMO:
-        st.warning("Public demo: uploads are disabled. Synthetic data only.")
-    else:
-        st.success(WHERE)
-    if not BROWSER:
-        st.caption("AI commentary: " + ("on" if llm.available() else "off"))
+st.set_page_config(page_title="anyrecon", page_icon="◯", layout="wide", initial_sidebar_state="collapsed")
+# Browser edition: fonts are declared by the page itself (same origin). Desktop/Server: served by Streamlit's static folder.
+st.markdown(ui.css(None if BROWSER else "app/static/fonts/"), unsafe_allow_html=True)
 
 ss = st.session_state
+ss.setdefault("view", "home")
 ss.setdefault("datasets", {})
 ss.setdefault("uploads", {})       # name -> (filename, bytes): held in memory only, never written to disk
 ss.setdefault("overrides", {})     # name -> {"mask": [...], "keep": [...]}
 ss.setdefault("sheet_mode", {})    # name -> ("largest"|"sheet"|"stack"|"each", sheet)
-
-with st.sidebar:
-    if st.button("Clear all data from this session"):
-        for k in list(ss.keys()):
-            del ss[k]
-        st.rerun()
-    st.caption("Nothing is saved to disk. Closing the tab also clears everything.")
+ss.setdefault("pci_mode", "strict")
+ss.setdefault("window", 3)
+ss.setdefault("tol", 0.01)
 
 
 def _from_bytes(name, filename, data, sheet_mode, ov):
@@ -82,7 +67,7 @@ def _from_bytes(name, filename, data, sheet_mode, ov):
         fh.write(data)
         tmp = Path(fh.name)
     try:
-        kw = dict(pci_mode=pci_mode, mask_columns=ov.get("mask", []), keep_columns=ov.get("keep", []))
+        kw = dict(pci_mode=ss.pci_mode, mask_columns=ov.get("mask", []), keep_columns=ov.get("keep", []))
         mode, sheet = sheet_mode
         if mode == "each":
             return {d.name: d for d in load_each_sheet(tmp, name=name, **kw)}
@@ -94,8 +79,6 @@ def _from_bytes(name, filename, data, sheet_mode, ov):
         tmp.unlink(missing_ok=True)
 
 
-# ---------------------------------------------------------------- 1. documents
-st.header("1 · Documents")
 def _load_samples():
     if all((SAMPLES / f).exists() for _, f in SAMPLE_FILES):
         ss.uploads = {n: (f, (SAMPLES / f).read_bytes()) for n, f in SAMPLE_FILES}
@@ -111,24 +94,70 @@ def _load_samples():
     ss.using_samples = True
 
 
+def _clear():
+    for k in list(ss.keys()):
+        del ss[k]
+
+
+# ---------------------------------------------------------------- landing
+if ss.view == "home":
+    st.markdown(ui.home_top(WHERE), unsafe_allow_html=True)
+    with st.container(key="home_actions"):
+        if DEMO:
+            if st.button("Try it with sample data", type="primary", key="try"):
+                _load_samples(); ss.view = "work"; st.rerun()
+        else:
+            c1, c2 = st.columns(2)
+            if c1.button("Start reconciling", type="primary", key="start"):
+                ss.view = "work"; st.rerun()
+            if c2.button("Try with sample data", key="try"):
+                _load_samples(); ss.view = "work"; st.rerun()
+    st.markdown(ui.home_where(WHERE, EDITION), unsafe_allow_html=True)
+    st.markdown(ui.home_sections(EDITION, BROWSER), unsafe_allow_html=True)
+    st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+    st.stop()
+
+# ---------------------------------------------------------------- work area
+stage = 4 if "results" in ss else 3 if ss.get("pairs_sel") else 2 if len(ss.datasets) >= 2 else 1
+b1, b2, b3 = st.columns([1, 9, 2], vertical_alignment="center")
+if b1.button("ar", key="go_home", help="Back to the start page"):
+    ss.view = "home"; st.rerun()
+b2.markdown(ui.steps_bar(stage), unsafe_allow_html=True)
+if b3.button("Clear all", key="clear", help="Remove every file and result from this session"):
+    _clear(); st.rerun()
+
+st.markdown(ui.step_head(1, "Your documents", "Add two or more. CSV, Excel, JSON or PDF"
+                         + ("." if BROWSER else ", including scans and photos.")), unsafe_allow_html=True)
 if DEMO:
-    if st.button("Load sample scenario (synthetic data)"):
+    st.info("Public demo: uploads are switched off. You're looking at synthetic sample data.")
+    if not ss.uploads:
         _load_samples()
 else:
     types = ["csv", "tsv", "txt", "xlsx", "xlsm", "xls", "json", "pdf"] + ([] if BROWSER else ["png", "jpg", "jpeg", "tif", "tiff"])
-    ups = st.file_uploader("Add any number of files: CSV, Excel, JSON, PDF" + ("" if BROWSER else ", scans and images"),
-                           accept_multiple_files=True, type=types,
+    ups = st.file_uploader("Add files", accept_multiple_files=True, type=types,
                            help="Scanned documents need the Desktop or Server edition." if BROWSER else None)
     if ups:
         ss.uploads = {Path(u.name).stem.replace(" ", "_")[:24]: (u.name, u.getvalue()) for u in ups}
         ss.using_samples = False
     elif not ss.get("using_samples"):
         ss.uploads = {}
-    if not ups and st.button("Or try it with sample data (synthetic)"):
-        _load_samples()
+    if not ups and not ss.get("using_samples") and st.button("Use sample data instead", key="try2"):
+        _load_samples(); st.rerun()
+
+with st.expander("Settings"):
+    s1, s2, s3 = st.columns(3)
+    s1.selectbox("Card data", ["strict", "paranoid", "block"], key="pci_mode",
+                 help="strict: mask card numbers, remove security codes and PIN data. paranoid: also mask "
+                      "card-number-shaped references. block: refuse files that contain card data.")
+    s2.number_input("Date window (days)", 0, 30, key="window")
+    s3.number_input("Amount tolerance", 0.0, 1000.0, step=0.01, key="tol")
+    if not BROWSER:
+        st.caption("AI commentary: " + ("on" if llm.available() else "off"))
+pci_mode, window, tol = ss.pci_mode, ss.window, ss.tol
 
 if not ss.uploads:
-    st.info("Add at least two documents to begin.")
+    st.markdown('<p class="ar-note">Nothing added yet.</p>', unsafe_allow_html=True)
+    st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
     st.stop()
 
 datasets = {}
@@ -154,7 +183,8 @@ for name, (filename, data) in ss.uploads.items():
     ck = f"ds_{hashlib.sha256(data).hexdigest()[:12]}_{mode}_{sorted(ov.get('mask', []))}_{sorted(ov.get('keep', []))}_{pci_mode}"
     try:
         if ck not in ss:
-            ss[ck] = _from_bytes(name, filename, data, mode, ov)
+            with st.spinner(f"Reading {filename}…"):
+                ss[ck] = _from_bytes(name, filename, data, mode, ov)
         datasets.update(ss[ck])
     except PCIBlocked as e:
         st.error(f"Blocked: {e}")
@@ -162,7 +192,8 @@ for name, (filename, data) in ss.uploads.items():
         st.error(str(e))
 ss.datasets = datasets
 if len(datasets) < 2:
-    st.info("Add at least two readable documents to continue.")
+    st.markdown('<p class="ar-note">Add at least one more document to continue.</p>', unsafe_allow_html=True)
+    st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
     st.stop()
 
 handled = [(d.name, f) for d in datasets.values() for f in d.findings if f.kind != "MASKED_PAN"]
@@ -200,12 +231,14 @@ for name, ds in datasets.items():
         st.dataframe(prof, width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------- 2. pairs
-st.header("2 · Which documents should be reconciled against each other?")
+st.markdown(ui.step_head(2, "What should agree with what?", "Pick one or more pairs. Three or more documents are "
+                         "linked into one view of each transaction."), unsafe_allow_html=True)
 names = list(ss.datasets)
 options = [f"{a} ⟷ {b}" for a, b in combinations(names, 2)]
-pairs = st.multiselect("Pairs (pick as many as you need; 3+ documents are chained automatically)", options,
-                       default=options[:1])
-tmpl_file = st.file_uploader("…or load a saved template (JSON)", type=["json"], key="tmpl")
+pairs = st.multiselect("Pairs", options, default=options[:1])
+ss.pairs_sel = bool(pairs)
+with st.expander("Use a saved setup"):
+    tmpl_file = st.file_uploader("Saved setup (JSON)", type=["json"], key="tmpl")
 
 configs = []
 if tmpl_file:
@@ -220,7 +253,8 @@ if tmpl_file:
     st.success(f"Template loaded: {len(configs)} pair(s).")
 else:
     # ---------------------------------------------------------------- 3. identifiers
-    st.header("3 · Identifiers and rules")
+    st.markdown(ui.step_head(3, "How they match", "The best options are already chosen. Change them if you know better."),
+                unsafe_allow_html=True)
     for pr in pairs:
         l, r = pr.split(" ⟷ ")
         L, R = ss.datasets[l], ss.datasets[r]
@@ -228,7 +262,7 @@ else:
         if ck not in ss:
             ss[ck] = auto_config(L, R, date_window_days=window)
         base_cfg, cands = ss[ck]
-        st.subheader(pr)
+        st.markdown(ui.pair_head(l, r), unsafe_allow_html=True)
         if not cands:
             st.error("No shared identifier or amount/date pattern found. Check the files or choose different pairs.")
             continue
@@ -255,7 +289,7 @@ else:
         c5, c6, c7 = st.columns(3)
         fee = c5.number_input(f"Fee % deducted in {r}", 0.0, 20.0, 0.0, step=0.05, key=f"fee_{pr}")
         tol_pct = c6.number_input("Amount tolerance %", 0.0, 10.0, 0.0, step=0.1, key=f"tp_{pr}")
-        comp = c7.checkbox("Fallback: amount + date when no identifier", True, key=f"comp_{pr}")
+        comp = c7.checkbox("Amount + date fallback", True, key=f"comp_{pr}", help="When no shared reference exists, match on amount and date.")
         cfg = auto_config(L, R, date_window_days=window, candidates=cands)[0]
         cfg.keys = [KeySpec(cands[labels.index(x)].left_col, cands[labels.index(x)].right_col, cands[labels.index(x)].left_tf,
                             cands[labels.index(x)].right_tf, cands[labels.index(x)].mode) for x in chosen]
@@ -265,22 +299,24 @@ else:
         configs.append(cfg)
 
 # ---------------------------------------------------------------- 4. run
-st.header("4 · Run")
-if st.button("Reconcile", type="primary", disabled=not configs):
-    results, chain = run_all(ss.datasets, configs)
+st.markdown(ui.step_head(4, "Results"), unsafe_allow_html=True)
+if st.button("Reconcile", type="primary", disabled=not configs, key="run"):
+    with st.spinner("Matching…"):
+        results, chain = run_all(ss.datasets, configs)
     ss.results, ss.chain, ss.configs = results, chain, configs
+    st.rerun()
 
 if "results" in ss:
     results, chain = ss.results, ss.chain
     for k, r in results.items():
         s = r.summary
-        st.subheader(k)
+        st.markdown(ui.pair_head(r.config.left, r.config.right), unsafe_allow_html=True)
         m = st.columns(5)
         m[0].metric("Matched groups", s["matched_groups"])
         m[1].metric("With variance", s["exception_groups"])
-        m[2].metric(f"{r.config.left} reconciled", f"{s['left_match_rate_pct']}%")
-        m[3].metric(f"{r.config.right} reconciled", f"{s['right_match_rate_pct']}%")
-        m[4].metric("Value matched (left)", f"{s['left_value_matched_pct']}%" if s["left_value_matched_pct"] is not None else "–")
+        m[2].metric(f"{r.config.left} matched", f"{s['left_match_rate_pct']}%")
+        m[3].metric(f"{r.config.right} matched", f"{s['right_match_rate_pct']}%")
+        m[4].metric("Value matched", f"{s['left_value_matched_pct']}%" if s["left_value_matched_pct"] is not None else "–")
         for i in r.insights:
             st.info(i)
         t1, t2, t3, t4 = st.tabs(["Exceptions", "Matches", f"Only in {r.config.left}", f"Only in {r.config.right}"])
@@ -289,8 +325,9 @@ if "results" in ss:
         t3.dataframe(r.left_unmatched, width="stretch", hide_index=True)
         t4.dataframe(r.right_unmatched, width="stretch", hide_index=True)
     if chain is not None:
-        st.subheader(f"Chains across all documents (anchor: {chain.anchor.iloc[0]})")
-        st.bar_chart(chain.status.value_counts())
+        st.markdown(f'<div class="ar-pair">Across all documents <i>· one row per {ui.esc(chain.anchor.iloc[0])} item</i></div>',
+                    unsafe_allow_html=True)
+        st.bar_chart(chain.status.value_counts(), color="#3A372F")
         st.dataframe(chain, width="stretch", hide_index=True)
     if llm.available() and st.button("Explain these results (AI)"):
         st.write(llm.explain(results))
@@ -307,3 +344,5 @@ if "results" in ss:
     tpl.save(fh.name, ss.datasets, ss.configs)
     d3.download_button("Save setup as template", Path(fh.name).read_text(), "recon_template.json")
     Path(fh.name).unlink(missing_ok=True)
+
+st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)

@@ -1,0 +1,23 @@
+
+@font-face{font-family:"Cormorant Garamond";font-style:normal;font-weight:400;font-display:swap;src:url("fonts/cormorant-garamond-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Cormorant Garamond";font-style:italic;font-weight:400;font-display:swap;src:url("fonts/cormorant-garamond-latin-400-italic.woff2") format("woff2")}
+@font-face{font-family:"Cormorant Garamond";font-style:normal;font-weight:500;font-display:swap;src:url("fonts/cormorant-garamond-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Cormorant Garamond";font-style:italic;font-weight:500;font-display:swap;src:url("fonts/cormorant-garamond-latin-500-italic.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-style:normal;font-weight:300;font-display:swap;src:url("fonts/geist-sans-latin-300-normal.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-style:normal;font-weight:400;font-display:swap;src:url("fonts/geist-sans-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-style:normal;font-weight:500;font-display:swap;src:url("fonts/geist-sans-latin-500-normal.woff2") format("woff2")}
+html,body{margin:0;background:#F2F0EA}
+#loader{position:fixed;inset:0;z-index:2147483647;background:#F2F0EA;color:#25231F;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:24px;font-family:"Geist",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;transition:opacity .6s ease}
+#loader.gone{opacity:0;pointer-events:none}
+.ld-mark{width:112px;height:112px;border-radius:50%;border:1px solid #B9B3A7;display:grid;place-items:center;font-family:"Cormorant Garamond",Georgia,serif;
+  font-size:42px;color:#3A372F;animation:breathe 3.2s ease-in-out infinite}
+.ld-mark i{font-style:italic}
+.ld-name{margin-top:34px;font-size:13px;letter-spacing:.32em;text-transform:uppercase;font-weight:500}
+.ld-msg{margin-top:14px;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:22px;color:#7A7468;min-height:1.4em;transition:opacity .4s ease}
+.ld-msg.out{opacity:0}
+.ld-track{width:180px;height:1px;background:#DDD8CD;margin-top:30px;overflow:hidden}
+.ld-track span{display:block;height:100%;width:0;background:#25231F;transition:width .3s linear}
+.ld-sub{margin-top:28px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#A39D90;max-width:30em;line-height:1.8}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.ld-mark{animation:none}#loader,.ld-msg{transition:none}}
