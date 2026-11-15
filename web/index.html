@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: data: 'wasm-unsafe-eval' 'unsafe-eval'; worker-src 'self' blob: data:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>anyrecon · Browser edition</title>
+<link rel="stylesheet" href="./stlite/stlite.css">
+<style>#boot{font:15px system-ui,sans-serif;max-width:560px;margin:15vh auto;color:#333;line-height:1.5}</style>
+</head>
+<body>
+<div id="root"><div id="boot"><b>anyrecon · Browser edition</b><br>Loading… the first visit downloads the engine (about a minute); later visits are fast.<br>Your files stay in this tab and are never uploaded.</div></div>
+<script type="module" src="./boot.js"></script>
+</body>
+</html>

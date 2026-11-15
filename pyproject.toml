@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anyrecon"
+version = "0.1.0"
+description = "Reconcile any set of documents: identifier discovery, tiered deterministic matching, PCI-aware ingestion."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.0",
+  "numpy",
+  "openpyxl>=3.1",
+  "pdfplumber>=0.11",
+]
+
+[project.optional-dependencies]
+ui = ["streamlit>=1.40", "rapidfuzz>=3.0", "reportlab"]   # rapidfuzz: faster hints; reportlab: sample data
+ocr = ["pytesseract>=0.3", "Pillow"]   # also needs the tesseract binary
+ai = ["anthropic"]
+dev = ["pytest", "reportlab"]
+
+[project.scripts]
+anyrecon = "anyrecon.cli:main"
+
+[tool.setuptools]
+packages = ["anyrecon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,4 @@
+# Vercel serves only the prebuilt Browser edition in web/
+/*
+!/web
+!/vercel.json

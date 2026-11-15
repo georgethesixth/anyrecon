@@ -1,0 +1,85 @@
+{
+  "merchant": "DEMO STORES LTD",
+  "settlements": [
+    {
+      "batch_id": "STL-20261001",
+      "settlement_date": "2026-10-02",
+      "txn_count": 27,
+      "gross_amount": 1136861.19,
+      "fee": 17052.92,
+      "net_amount": 1119808.27
+    },
+    {
+      "batch_id": "STL-20261002",
+      "settlement_date": "2026-10-03",
+      "txn_count": 33,
+      "gross_amount": 1937339.2,
+      "fee": 29060.09,
+      "net_amount": 1908279.11
+    },
+    {
+      "batch_id": "STL-20261003",
+      "settlement_date": "2026-10-04",
+      "txn_count": 33,
+      "gross_amount": 1740186.64,
+      "fee": 26102.8,
+      "net_amount": 1714083.84
+    },
+    {
+      "batch_id": "STL-20261004",
+      "settlement_date": "2026-10-05",
+      "txn_count": 39,
+      "gross_amount": 3281324.19,
+      "fee": 49257.36,
+      "net_amount": 3234566.83
+    },
+    {
+      "batch_id": "STL-20261005",
+      "settlement_date": "2026-10-06",
+      "txn_count": 29,
+      "gross_amount": 2669576.63,
+      "fee": 40043.65,
+      "net_amount": 2629532.98
+    },
+    {
+      "batch_id": "STL-20261006",
+      "settlement_date": "2026-10-07",
+      "txn_count": 36,
+      "gross_amount": 1251044.38,
+      "fee": 18765.67,
+      "net_amount": 1232278.71
+    },
+    {
+      "batch_id": "STL-20261007",
+      "settlement_date": "2026-10-08",
+      "txn_count": 35,
+      "gross_amount": 2485826.56,
+      "fee": 37287.4,
+      "net_amount": 2448539.16
+    },
+    {
+      "batch_id": "STL-20261008",
+      "settlement_date": "2026-10-09",
+      "txn_count": 24,
+      "gross_amount": 1741310.28,
+      "fee": 26119.65,
+      "net_amount": 1715190.63
+    },
+    {
+      "batch_id": "STL-20261009",
+      "settlement_date": "2026-10-10",
+      "txn_count": 21,
+      "gross_amount": 1314176.44,
+      "fee": 19712.65,
+      "net_amount": 1294463.79
+    },
+    {
+      "batch_id": "STL-20261010",
+      "settlement_date": "2026-10-11",
+      "txn_count": 23,
+      "gross_amount": 772307.87,
+      "fee": 11584.62,
+      "net_amount": 760723.25
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: no-card-numbers
+        name: block card numbers (PCI DSS)
+        entry: python scripts/pan_scan.py
+        language: system
+        types: [text]

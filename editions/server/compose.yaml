@@ -1,0 +1,17 @@
+# anyrecon · Server edition. Run from this folder:  docker compose up -d   → http://<server>:8501
+services:
+  anyrecon:
+    build:
+      context: ../..
+      dockerfile: editions/server/Dockerfile
+    image: anyrecon:latest
+    ports:
+      - "8501:8501"
+    environment:
+      ANYRECON_PAN_KEY: ${ANYRECON_PAN_KEY:-}     # set in .env for card-number tokens that stay stable across runs
+      ANYRECON_DEMO: ${ANYRECON_DEMO:-0}          # 1 = no uploads, synthetic data only (public demos)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}   # optional AI commentary; leave empty to keep it off
+    read_only: true                               # nothing written to disk
+    tmpfs:
+      - /tmp
+    restart: unless-stopped

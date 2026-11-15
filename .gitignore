@@ -1,0 +1,31 @@
+# Never commit data. Generate samples with examples/generate_samples.py
+examples/data/
+data/
+*.xlsx
+*.xls
+*.csv
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.audit.json
+recon_*.json
+!tests/fixtures/*.csv
+
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+.env
+.streamlit/secrets.toml
+!docs/*.png
+
+# Browser edition build output (publish it, don't commit it)
+editions/browser/site/
+editions/browser/.cache/
+.venv/
+
+# web/ is the published Browser edition (prebuilt, served by Vercel): keep everything in it
+!web/**
