@@ -63,6 +63,10 @@ html.landing body{overflow:hidden}
 .ar-btn .spin{width:14px;height:14px;box-sizing:border-box;margin:-2px 0;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:arspin .8s linear infinite}
 @keyframes arpulse{50%{opacity:.35}}
 @keyframes arspin{to{transform:rotate(360deg)}}
+.ar-oops{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483647;background:#14171F;color:#fff;font:14px/1.4 var(--font);
+  padding:12px 14px 12px 18px;border-radius:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;max-width:min(680px,92vw);box-shadow:0 8px 30px rgba(0,0,0,.2)}
+.ar-oops button{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:7px 12px;font:600 14px var(--font);cursor:pointer}
+.ar-oops span{color:#B8BDC7;font-size:13px}
 @media (prefers-reduced-motion:reduce){.ar-status i,.ar-btn .spin{animation:none}#landing{transition:none}}
 """
 
@@ -96,6 +100,27 @@ LANDING_JS = r"""
     if (pending) enter(pending);
   });
   obs.observe(root, { childList: true, subtree: true });
+})();
+
+// Fetch the UI pieces the app will need (figures, download buttons, tables...) while the visitor reads,
+// with retries, so nothing has to be downloaded at the moment results appear on a slow or flaky line.
+(() => {
+  const list = PREFETCH, base = new URL("./stlite/", import.meta.url).href;
+  const get = async (f) => { for (let i = 0; i < 4; i++) { try { const r = await fetch(base + f); if (r.ok) { await r.arrayBuffer(); return; } } catch (e) {} await new Promise((s) => setTimeout(s, 1500 * (i + 1))); } };
+  setTimeout(async () => { const q = list.slice(); const run = async () => { while (q.length) await get(q.shift()); }; await Promise.all([run(), run(), run()]); }, 1500);
+})();
+
+// If a piece still fails to load, say so plainly instead of leaving red boxes.
+(() => {
+  const root = document.getElementById("root"); let shown = false;
+  new MutationObserver(() => {
+    if (shown || !root.innerText || !root.innerText.includes("Failed to fetch dynamically imported module")) return;
+    shown = true;
+    const bar = document.createElement("div"); bar.className = "ar-oops";
+    bar.innerHTML = 'Part of the page didn\'t load because the connection dropped for a moment. <button>Reload</button><span>You\'ll need to add your files again.</span>';
+    bar.querySelector("button").onclick = () => location.reload();
+    document.body.appendChild(bar);
+  }).observe(root, { childList: true, subtree: true });
 })();
 """
 
@@ -219,6 +244,10 @@ def main():
     }
     sys.path.insert(0, str(ROOT))
     import ui_theme as ui
+    wanted = (Path(__file__).parent / "prefetch.txt").read_text().split()
+    prefetch = [f for f in wanted if (out / "stlite" / f).exists()]
+    if len(prefetch) < len(wanted):
+        log(f"warning: {len(wanted) - len(prefetch)} prefetch chunk(s) not found (stlite version changed?): refresh prefetch.txt")
     version = re.search(r'__version__\s*=\s*"([^"]+)"', (ROOT / "anyrecon" / "__init__.py").read_text()).group(1)
     landing = ui.landing_page("Browser", version, browser=True)
     html = f"""<!doctype html>
@@ -252,7 +281,7 @@ def main():
         'const abs = (v) => typeof v === "string" && v.startsWith("./") ? new URL(v, base).href\n'
         '  : Array.isArray(v) ? v.map(abs) : (v && typeof v === "object") ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, abs(x)])) : v;\n'
         f'const options = {json.dumps(opts, indent=1)};\n'
-        + LANDING_JS +
+        + LANDING_JS.replace("PREFETCH", json.dumps(prefetch)) +
         'mount(abs(options), document.getElementById("root"));\n', encoding="utf-8")
     # Response headers for hosts that support them (Netlify / Cloudflare Pages). These also cover the
     # Python worker, which a <meta> CSP does not reach.

@@ -129,4 +129,25 @@ const options = {
   });
   obs.observe(root, { childList: true, subtree: true });
 })();
+
+// Fetch the UI pieces the app will need (figures, download buttons, tables...) while the visitor reads,
+// with retries, so nothing has to be downloaded at the moment results appear on a slow or flaky line.
+(() => {
+  const list = ["ArrowVegaLiteChart-DESdGa-n-CEaS8POZ.js", "Autocomplete-yBl0QZl8-BEE9EvYw.js", "Button-DhJyQroy-B0Cv_LtY.js", "ButtonGroup-D_brxMJk-BOjSceyZ.js", "Cancel.esm-CtMNidjq-CXB-pKHk.js", "Checkbox-DiR2_V_8-CXHk70Gn.js", "DataFrame-DRF8lFxD-CzB3xmp7.js", "Delete.esm-C6XWoANM-vurQtJtA.js", "DownloadButton-BDPs5fKe-CaNr19dT.js", "ErrorOutline.esm-BTDiocCk-BcENiBMZ.js", "FileDownload.esm-CRjxpEeO-BaCWUjYd.js", "FileUploader-owv7Gz8c-BhqJc8-M.js", "Input-B1waFcLc-Ckq09rqm.js", "InputInstructions-CbZRC43y-BKqlI7Nl.js", "Metric-B4Y_nDFF-BZYvb_ri.js", "Multiselect-DBXDK3cr-3J8OBdHw.js", "NumberInput-C7YGxq-_-YqHWBRvg.js", "Radio-BhjCl1ye-Dl8N1b4y.js", "Selectbox-nIDushPA-D6d1TubB.js", "TableChart.esm-pzrJ7Hep-BMvXRoA-.js", "TextField-Co5gRJYP-Dyt18gzB.js", "UploadFileInfo-DdcsXhjv-C0F82PE-.js", "WidgetLabel--oJQrsAd-IbrOPlTn.js", "WidgetLabelHelpIcon-CWnOrY3T-BtbNCfjY.js", "WidgetLabelHelpIconInline-CmMO3-ig-CNt0dgU_.js", "_baseAssignValue-h4lglAau-CHZc32PX.js", "checkboxIndicatorStyles-5aHp9rTE-wuG81IsF.js", "colors-BD7LS4qt-BehGd4Ls.js", "createDownloadLinkElement-DiNIFj9z-DoAwXp-8.js", "cubic-Dir1Ko---Ccey17jF.js", "defaultLocale-2bEbhetO-QGFVckfi.js", "downloadDataUrl-DWF0xXIp-B1lPap8q.js", "formatMoment-CSglijqE-wHP8MmD-.js", "formatNumber-Q1A8AyDZ-C1p6HSP6.js", "fuzzyFilterSelectOptions-KB6RlC97-DFGqimxU.js", "index-CMxjGYGc-Cq-UqsLs.js", "index-CVld_lKx-DBjTNNj_.js", "index-CtOUUcfI-DNqIEPU5.js", "index-Df-1Z3LJ-BbKzDPIK.js", "index-fsFmsChH-Dni1dpUL.js", "init-5BClRdiB-LyILMlTE.js", "linear-CJvvCWKw-rrRTERsA.js", "numbro-CDdPhOTG-vF1UvoJy.js", "ordinal-DkyryJlW-DURmPlUH.js", "pandasStylerUtils-CW7C-2r_-shYCGj7z.js", "range-CdxqIeI4-DXvN35R3.js", "range-DdOGybNB-Ba7Spj1J.js", "reactJsonViewCompat-PzF5iqZ4-oi2jTtgM.js", "resolveDefaultExport-Cy5TTESD-CcwO08HL.js", "serialization-BSMBF8e2-CqZaT18J.js", "sprintfjs-CjmCzARP-HuCjLGam.js", "string-BvOnLx8K-BsWpS-s0.js", "styled-components-DOYIt51e-DLCP0S-5.js", "styled-components-QCR0zGl1-gqUrmVXI.js", "threshold-je-9V4hw-qdwK0deF.js", "time-p2i1Qn9v-RYMFf5JC.js", "toConsumableArray-B4DpFEAW-6YGARpRB.js", "unzip-B41UTbNh-D5sjV7cq.js", "useBasicWidgetState-DVivDFu--yiQ4kKRs.js", "useCollator-DP4BnoIq-QM8AOSx3.js", "useDebouncedCallback-BCfvDBFe-DLr1Sw-B.js", "useField-BVpgvwQT-C8iZdscS.js", "useFilter-DrWea0bI-BL4UsXQg.js", "useFormReset-BZ7HXuA_-BoM-dbzr.js", "useFormValidation-Cnit8K9v-CsmEyeH7.js", "useLoadMoreSentinel-7ezKn0I6-CVdwtTzs.js", "useMenuTrigger-BjNvpiW8-jg9Gu40v.js", "useSlot-DKJSZCIj-BYcKzeSG.js", "useTextField-Dnr0FC1--M69xt9uz.js", "utils-KJzGoNUG-DTAUhUPK.js", "value-Fb9HFOxE-BHCNJ526.js", "withFullScreenWrapper-C8-Fpvyp-DxnGM32Q.js", "zip-DFW5sP7Z-DCXENPDG.js", "zoom-C9yGXsgU-cg-4X7cE.js"], base = new URL("./stlite/", import.meta.url).href;
+  const get = async (f) => { for (let i = 0; i < 4; i++) { try { const r = await fetch(base + f); if (r.ok) { await r.arrayBuffer(); return; } } catch (e) {} await new Promise((s) => setTimeout(s, 1500 * (i + 1))); } };
+  setTimeout(async () => { const q = list.slice(); const run = async () => { while (q.length) await get(q.shift()); }; await Promise.all([run(), run(), run()]); }, 1500);
+})();
+
+// If a piece still fails to load, say so plainly instead of leaving red boxes.
+(() => {
+  const root = document.getElementById("root"); let shown = false;
+  new MutationObserver(() => {
+    if (shown || !root.innerText || !root.innerText.includes("Failed to fetch dynamically imported module")) return;
+    shown = true;
+    const bar = document.createElement("div"); bar.className = "ar-oops";
+    bar.innerHTML = 'Part of the page didn\'t load because the connection dropped for a moment. <button>Reload</button><span>You\'ll need to add your files again.</span>';
+    bar.querySelector("button").onclick = () => location.reload();
+    document.body.appendChild(bar);
+  }).observe(root, { childList: true, subtree: true });
+})();
 mount(abs(options), document.getElementById("root"));

@@ -73,4 +73,8 @@ html.landing body{overflow:hidden}
 .ar-btn .spin{width:14px;height:14px;box-sizing:border-box;margin:-2px 0;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:arspin .8s linear infinite}
 @keyframes arpulse{50%{opacity:.35}}
 @keyframes arspin{to{transform:rotate(360deg)}}
+.ar-oops{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483647;background:#14171F;color:#fff;font:14px/1.4 var(--font);
+  padding:12px 14px 12px 18px;border-radius:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;max-width:min(680px,92vw);box-shadow:0 8px 30px rgba(0,0,0,.2)}
+.ar-oops button{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:7px 12px;font:600 14px var(--font);cursor:pointer}
+.ar-oops span{color:#B8BDC7;font-size:13px}
 @media (prefers-reduced-motion:reduce){.ar-status i,.ar-btn .spin{animation:none}#landing{transition:none}}
