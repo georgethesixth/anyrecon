@@ -11,6 +11,7 @@ ACCENT, INK, MUTED, LINE, WELL = "#2457D6", "#14171F", "#5F6673", "#E3E6EB", "#F
 REPO = "https://github.com/georgethesixth/anyrecon"
 AUTHOR_URL = "https://kemdi.co"
 GUIDE_URL = "https://anyrecon.vercel.app/guide.html"   # rendered from docs/GUIDE.md by the Browser build
+DOWNLOAD_URL = REPO + "/archive/refs/heads/main.zip"   # web/ is export-ignored (.gitattributes): ~1 MB
 
 BASE_CSS = """
 :root{--accent:#2457D6;--accent-d:#1C46B0;--accent-soft:#EEF3FD;--ink:#14171F;--ink2:#2B303B;--muted:#5F6673;--faint:#8A909C;
@@ -68,6 +69,23 @@ BASE_CSS = """
 .ar-step h2{font-size:22px!important;font-weight:650!important;letter-spacing:-.01em;color:var(--ink);margin:4px 0 2px!important;padding:0!important}
 .ar-step p{color:var(--muted);font-size:15px;margin:0}
 .ar-note{color:var(--muted);font-size:14px;margin:6px 0 0}
+.ar-os{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.ar-os>input{position:absolute;opacity:0;pointer-events:none}
+.ar-os-tabs{display:flex;border-bottom:1px solid var(--line);background:var(--well)}
+.ar-os-tabs label{padding:12px 20px;font-size:15px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.ar-os-tabs label:hover{color:var(--ink)}
+#os-win:checked~.ar-os-tabs label[for=os-win],#os-mac:checked~.ar-os-tabs label[for=os-mac],#os-linux:checked~.ar-os-tabs label[for=os-linux]
+  {color:var(--ink);border-bottom-color:var(--accent);background:#fff}
+#os-win:focus-visible~.ar-os-tabs label[for=os-win],#os-mac:focus-visible~.ar-os-tabs label[for=os-mac],#os-linux:focus-visible~.ar-os-tabs label[for=os-linux]
+  {outline:2px solid var(--accent);outline-offset:-2px}
+.ar-os-panel{display:none;padding:20px 22px 6px}
+#os-win:checked~.ar-os-panels .p-win,#os-mac:checked~.ar-os-panels .p-mac,#os-linux:checked~.ar-os-panels .p-linux{display:block}
+.ar-os-size{margin-left:12px;font-size:13px;color:var(--faint)}
+.ar-os-panel ol{margin:18px 0 8px;padding-left:20px;color:var(--ink2);font-size:15px;line-height:1.6}
+.ar-os-panel li{margin-bottom:8px}
+.ar-os-panel code{font:13px var(--mono);background:var(--well);padding:1px 5px;border-radius:4px}
+.ar-os-note{padding:12px 22px 16px;font-size:13.5px;color:var(--muted);border-top:1px solid var(--line)}
+.ar-os-note a{color:var(--accent)}
 .ar-results h2{font-size:22px!important;font-weight:650!important;margin:28px 0 2px!important;padding:0!important;color:var(--ink)}
 .ar-results p{color:var(--muted);font-size:15px;margin:0}
 .ar-pair{font-size:17px;font-weight:650;color:var(--ink);margin:30px 0 8px}
@@ -189,7 +207,46 @@ def home_sections(edition: str, browser: bool) -> str:
     return (f'<section class="ar-sec" id="how"><h2>How it works</h2><p>No setup and no account.</p>'
             f'<div class="ar-cards">{cards}</div></section>'
             f'<section class="ar-sec" id="data"><h2>Your data</h2><p>Built for card and bank data. '
-            f'<a href="{GUIDE_URL}#data-handling" target="_blank" rel="noopener">Full detail in the guide.</a></p><dl class="ar-dl">{dl}</dl></section>')
+            f'<a href="{GUIDE_URL}#data-handling" target="_blank" rel="noopener">Full detail in the guide.</a></p><dl class="ar-dl">{dl}</dl></section>'
+            + (download_section() if browser else ""))
+
+
+def download_section() -> str:
+    """'Run it on your computer': the Desktop edition, one tab per OS. CSS-only tabs (radio inputs);
+    boot.js pre-selects the visitor's OS."""
+    trouble = f'<a href="{GUIDE_URL}#run-it-on-your-computer" target="_blank" rel="noopener">Help and troubleshooting</a>'
+    oses = [
+        ("win", "Windows", "Start anyrecon (Windows).bat", [
+            "Download and unzip it (right-click → <b>Extract All</b>).",
+            "In the <b>anyrecon-main</b> folder, double-click <b>Start anyrecon (Windows).bat</b>. "
+            "If Windows says it protected your PC, click <b>More info</b> → <b>Run anyway</b>.",
+            "No Python yet? The download page opens: install it, ticking <b>Add python.exe to PATH</b> "
+            "(no administrator rights needed), then double-click the file again.",
+            "The first run sets itself up in 2–5 minutes, then anyrecon opens in your browser."]),
+        ("mac", "Mac", "Start anyrecon (Mac).command", [
+            "Download it; it unzips into an <b>anyrecon-main</b> folder.",
+            "Right-click <b>Start anyrecon (Mac).command</b> → <b>Open</b> → <b>Open</b>. "
+            "The right-click is needed the first time only.",
+            "No Python yet? The download page opens: install it (it may ask for your Mac password), then repeat step 2.",
+            "The first run sets itself up in 2–5 minutes, then anyrecon opens in your browser."]),
+        ("linux", "Linux", "start-anyrecon-linux.sh", [
+            "Download and unzip it.",
+            "In a terminal, in the <b>anyrecon-main</b> folder: <code>bash start-anyrecon-linux.sh</code>",
+            "Needs Python 3.10+ with venv (<code>sudo apt install python3-venv</code> on Ubuntu).",
+            "The first run sets itself up in 2–5 minutes, then anyrecon opens in your browser."]),
+    ]
+    radios = "".join(f'<input type="radio" name="ar-os" id="os-{k}"{" checked" if k == "win" else ""}>' for k, _, _, _ in oses)
+    tabs = "".join(f'<label for="os-{k}">{n}</label>' for k, n, _, _ in oses)
+    panels = "".join(
+        f'<div class="ar-os-panel p-{k}"><a class="ar-btn primary" href="{DOWNLOAD_URL}">Download for {n}</a>'
+        f'<span class="ar-os-size">ZIP, about 1 MB</span><ol>' + "".join(f"<li>{s}</li>" for s in steps) + "</ol></div>"
+        for k, n, _, steps in oses)
+    return (f'<section class="ar-sec" id="download"><h2>Run it on your computer</h2>'
+            f'<p>For large files, scanned documents or working offline. Same tool, same results, and your files stay on your computer.</p>'
+            f'<div class="ar-os">{radios}<div class="ar-os-tabs">{tabs}</div><div class="ar-os-panels">{panels}</div>'
+            f'<div class="ar-os-note">Installs only inside its own folder: delete the folder to remove it. The first run downloads its '
+            f'components from pypi.org; after that it works offline. Can\'t install anything? This page needs nothing installed. {trouble}.</div>'
+            f'</div></section>')
 
 
 def footer(version: str, edition: str) -> str:
@@ -201,7 +258,8 @@ def footer(version: str, edition: str) -> str:
 
 def landing_page(edition: str, version: str, browser: bool) -> str:
     """The whole landing page as static HTML (Browser edition shows it before Python has started)."""
-    status = '<span class="ar-status" id="arStatus"><i></i><em>Preparing engine</em></span>'
+    status = ('<span class="ar-status" id="arStatus"><i></i><em>Preparing engine</em></span>'
+              '<a class="opt" href="#download">Download</a>')
     actions = ('<div class="ar-actions"><button class="ar-btn primary" data-go="start">Start reconciling</button>'
                f'<a class="ar-btn" href="{GUIDE_URL}" target="_blank" rel="noopener">How it works and handles data</a></div>')
     return (f'<div class="ar-wrap">{nav(status)}<div class="ar-hero"><h1>{HERO_TITLE}</h1><p>{HERO_TEXT}</p>{actions}'

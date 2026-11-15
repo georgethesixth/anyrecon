@@ -1,0 +1,33 @@
+anyrecon - Desktop edition
+==========================
+
+Reconcile any set of documents on your own computer. Files never leave this computer.
+Full guide: https://anyrecon.vercel.app/guide.html#run-it-on-your-computer
+
+
+WINDOWS
+  1. Double-click   Start anyrecon (Windows).bat
+     If Windows says "Windows protected your PC", click "More info", then "Run anyway".
+  2. If Python isn't installed, the download page opens. Install it, ticking
+     "Add python.exe to PATH" on the first screen (no administrator rights needed),
+     then double-click the file again.
+  3. The first run sets itself up (2-5 minutes). anyrecon then opens in your browser.
+     Keep the black window open while you work; close it to stop.
+
+MAC
+  1. Right-click   Start anyrecon (Mac).command   then choose Open, then Open again.
+     (Needed the first time only, because the file isn't from a registered developer.)
+  2. If Python isn't installed, the download page opens. Install it, then do step 1 again.
+  3. The first run sets itself up (2-5 minutes). anyrecon then opens in your browser.
+     Keep the Terminal window open while you work; close it to stop.
+
+LINUX
+  In a terminal, in this folder:   bash start-anyrecon-linux.sh
+
+
+GOOD TO KNOW
+  - Everything is installed inside this folder. To remove anyrecon, delete the folder.
+  - The first run downloads what it needs from pypi.org. After that it works offline.
+    On a company network that blocks pypi.org, ask IT to allow it once.
+  - Scanned documents need Tesseract (optional): see editions/desktop/README.md.
+  - Can't install anything? Use the browser version: https://anyrecon.vercel.app

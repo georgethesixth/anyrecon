@@ -19,12 +19,13 @@ this guide summarises it.
 5. [The pipeline, step by step](#the-pipeline-step-by-step)
 6. [The app](#the-app)
 7. [The three editions](#the-three-editions)
-8. [Outputs](#outputs)
-9. [Command line](#command-line)
-10. [Configuration](#configuration)
-11. [Working on the code](#working-on-the-code)
-12. [Known limitations](#known-limitations)
-13. [Glossary](#glossary)
+8. [Run it on your computer](#run-it-on-your-computer)
+9. [Outputs](#outputs)
+10. [Command line](#command-line)
+11. [Configuration](#configuration)
+12. [Working on the code](#working-on-the-code)
+13. [Known limitations](#known-limitations)
+14. [Glossary](#glossary)
 
 ## What it does
 
@@ -424,18 +425,74 @@ Browser-specific behaviour in the code: `sys.platform == "emscripten"`. Things t
 - The first visit downloads tens of megabytes (the Python runtime and packages); the runtime files are marked
   immutable, so later visits load them from the browser cache.
 
-### Desktop edition: `editions/desktop/`
+### Desktop edition: launchers at the repository root, docs in `editions/desktop/`
 
-Double-click launchers for Windows (`.bat`), Mac (`.command`) and Linux (`.sh`). First run: checks for Python,
-creates a private environment in `.venv` inside the folder, installs anyrecon with the UI and OCR extras. Every
-run: starts Streamlit on `127.0.0.1` with usage statistics off and opens the browser. No administrator rights
-needed. Tesseract is optional, for scans. `.streamlit/config.toml` holds the theme and settings.
+Three launchers sit at the top of the download so users find them straight away: `Start anyrecon (Windows).bat`,
+`Start anyrecon (Mac).command` and `start-anyrecon-linux.sh`. Each one:
+
+1. Finds a Python that actually runs and is 3.10 or newer. Windows tries the `py` launcher, then `python`, and
+   runs each (the Microsoft Store puts a `python` shortcut on PATH that exists but doesn't run). Mac and Linux try
+   `python3.13` down to `python3`; on a fresh Mac `/usr/bin/python3` is only a stub that offers to install Apple's
+   developer tools. If none works: opens python.org (Windows/Mac) and explains what to tick, or prints the package
+   command (Linux), and points to the Browser edition.
+2. On first run, creates `.venv` inside the folder and runs `pip install -e ".[ui,ocr]"`. Success writes the marker
+   file `.venv/anyrecon-ready`; without it, the next start resumes setup, so an interrupted install never leaves a
+   broken copy.
+3. Starts Streamlit on `127.0.0.1` (not reachable from other computers) with usage statistics off.
+
+No administrator rights are needed. `START HERE.txt` at the root repeats the steps for people who open the ZIP
+before reading anything else. `.gitattributes` keeps Windows line endings in the `.bat` and leaves the built
+website (`web/`) out of GitHub's ZIP download, which keeps it at about 1 MB. Tesseract is optional, for scans.
+`.streamlit/config.toml` holds the theme and settings.
 
 ### Server edition: `editions/server/`
 
 `Dockerfile` (Python slim + Tesseract, runs as a non-root user) and `compose.yaml` (port 8501, **read-only
 file system** with an in-memory `/tmp`, health check). **It has no login of its own**: put it behind your
 organisation's sign-in (SSO / reverse proxy) on the internal network. Never expose it to the public internet.
+
+## Run it on your computer
+
+The Desktop edition, for large files, scanned documents or working offline. Same app, same results; files never
+leave the computer. The landing page offers it under **Run it on your computer**, with the visitor's system
+pre-selected. Full user instructions:
+[editions/desktop/README.md](https://github.com/georgethesixth/anyrecon/blob/main/editions/desktop/README.md).
+
+**Download:** [the ZIP](https://github.com/georgethesixth/anyrecon/archive/refs/heads/main.zip) (about 1 MB). It
+unzips into a folder called `anyrecon-main`.
+
+| | Windows | Mac | Linux |
+|---|---|---|---|
+| Start | Double-click `Start anyrecon (Windows).bat` | Right-click `Start anyrecon (Mac).command` → Open → Open | `bash start-anyrecon-linux.sh` |
+| First-time warning | "Windows protected your PC" → More info → Run anyway | "unidentified developer" → the right-click handles it | none |
+| Python | python.org installer, tick "Add python.exe to PATH"; installs for your user, no admin rights | python.org installer; may ask for your password | `sudo apt install python3 python3-venv` or equivalent |
+| Stop | Close the black window | Close the Terminal window | Ctrl+C |
+
+**What it needs:**
+
+- **Python 3.10 or newer.** The launcher checks and helps install it.
+- **Internet on the first run only**, to download its components from pypi.org into the folder (2–5 minutes).
+  After that it works offline.
+- **Optional:** Tesseract, to read scanned documents.
+
+**What it changes on the computer:** nothing outside its own folder. Delete the folder to remove it.
+
+**When it won't work, and what to do:**
+
+| Situation | What happens | What to do |
+|---|---|---|
+| IT doesn't allow installing Python | The launcher can't find Python | Use the Browser edition, or ask IT |
+| IT blocks `.bat` or `.command` files | Nothing runs | Same |
+| The company network blocks pypi.org | "Setup could not download what it needs" | Ask IT to allow pypi.org once, or do the first run on another network; the launcher resumes where it stopped |
+| The folder is read-only (e.g. inside a ZIP preview, or a synced drive) | "Could not create the environment" | Unzip properly and move the folder to Documents |
+| Port 8501 is in use | Streamlit says so | anyrecon is already running in another window |
+
+**Updating:** download the new ZIP, copy any saved setups (`.json`) across, delete the old folder. The first start
+sets itself up again.
+
+**Tested:** the Linux launcher, end to end from a clean download, including resuming an interrupted setup. The
+Windows and Mac launchers follow the same steps but have not yet been run on real machines by the maintainer.
+Reports welcome.
 
 ## Outputs
 
@@ -502,7 +559,9 @@ Exit codes: 2 = blocked by card-data `block` mode; 3 = a file couldn't be read.
 | `ui_theme.py` | CSS and HTML pieces for the app and the static landing page. |
 | `.streamlit/config.toml` | Streamlit theme and settings (Desktop/Server). |
 | `editions/browser/` | `build.py` (builds the static site), `check.py` (end-to-end test), `prefetch.txt` (UI pieces to preload). |
-| `editions/desktop/`, `editions/server/` | Launchers; Docker files. Each has a README for end users. |
+| `Start anyrecon (Windows).bat`, `Start anyrecon (Mac).command`, `start-anyrecon-linux.sh`, `START HERE.txt` | Desktop edition launchers and instructions, at the root so users find them in the download. |
+| `editions/desktop/`, `editions/server/` | Desktop user guide; Server Docker files. Each has a README for end users. |
+| `.gitattributes` | Keeps `web/` out of GitHub's ZIP download and Windows line endings in the `.bat`. |
 | `web/` | The built Browser edition, served by Vercel. Generated: rebuild, don't edit. |
 | `examples/generate_samples.py` | Writes synthetic, deliberately messy test files (CSV, Excel, PDF, JSON, a scan) to `examples/data/`. Fake card numbers use test-only ranges. |
 | `tests/test_engine.py` | Engine tests. |
@@ -574,8 +633,11 @@ Honest list of what doesn't work yet, roughly in order of impact. Good places to
 - **Day/month order** is assumed day-first when the data can't tell.
 - **Server edition has no login**; it relies on your organisation's.
 - **The Change panel** covers the key and the files; amount/date columns and fees are under Advanced.
-- **Untested platforms:** the Windows launcher and the Docker image have not been run end to end by the
+- **Untested platforms:** the Windows and Mac launchers and the Docker image have not been run end to end by the
   maintainer yet. Reports welcome.
+- **The Desktop edition needs Python and, on first run, access to pypi.org.** A ready-to-run app per system (no
+  Python needed) is on the roadmap; without paid code-signing it would show the same "unidentified developer"
+  warnings.
 
 Ideas on the roadmap: FX rates; applying fixed fees; connectors that pull files from processor APIs or SFTP; a
 local AI option with no data leaving the machine; saved setups selectable from the Simple flow.

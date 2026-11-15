@@ -30,6 +30,7 @@ this guide summarises it.</p>
 <li><a href="#the-pipeline-step-by-step">The pipeline, step by step</a></li>
 <li><a href="#the-app">The app</a></li>
 <li><a href="#the-three-editions">The three editions</a></li>
+<li><a href="#run-it-on-your-computer">Run it on your computer</a></li>
 <li><a href="#outputs">Outputs</a></li>
 <li><a href="#command-line">Command line</a></li>
 <li><a href="#configuration">Configuration</a></li>
@@ -669,15 +670,121 @@ only <code>web/</code> and <code>vercel.json</code> are uploaded).</p>
 <li>The first visit downloads tens of megabytes (the Python runtime and packages); the runtime files are marked
   immutable, so later visits load them from the browser cache.</li>
 </ul>
-<h3 id="desktop-edition-editionsdesktop">Desktop edition: <code>editions/desktop/</code></h3>
-<p>Double-click launchers for Windows (<code>.bat</code>), Mac (<code>.command</code>) and Linux (<code>.sh</code>). First run: checks for Python,
-creates a private environment in <code>.venv</code> inside the folder, installs anyrecon with the UI and OCR extras. Every
-run: starts Streamlit on <code>127.0.0.1</code> with usage statistics off and opens the browser. No administrator rights
-needed. Tesseract is optional, for scans. <code>.streamlit/config.toml</code> holds the theme and settings.</p>
+<h3 id="desktop-edition-launchers-at-the-repository-root-docs-in-editionsdesktop">Desktop edition: launchers at the repository root, docs in <code>editions/desktop/</code></h3>
+<p>Three launchers sit at the top of the download so users find them straight away: <code>Start anyrecon (Windows).bat</code>,
+<code>Start anyrecon (Mac).command</code> and <code>start-anyrecon-linux.sh</code>. Each one:</p>
+<ol>
+<li>Finds a Python that actually runs and is 3.10 or newer. Windows tries the <code>py</code> launcher, then <code>python</code>, and
+   runs each (the Microsoft Store puts a <code>python</code> shortcut on PATH that exists but doesn't run). Mac and Linux try
+   <code>python3.13</code> down to <code>python3</code>; on a fresh Mac <code>/usr/bin/python3</code> is only a stub that offers to install Apple's
+   developer tools. If none works: opens python.org (Windows/Mac) and explains what to tick, or prints the package
+   command (Linux), and points to the Browser edition.</li>
+<li>On first run, creates <code>.venv</code> inside the folder and runs <code>pip install -e ".[ui,ocr]"</code>. Success writes the marker
+   file <code>.venv/anyrecon-ready</code>; without it, the next start resumes setup, so an interrupted install never leaves a
+   broken copy.</li>
+<li>Starts Streamlit on <code>127.0.0.1</code> (not reachable from other computers) with usage statistics off.</li>
+</ol>
+<p>No administrator rights are needed. <code>START HERE.txt</code> at the root repeats the steps for people who open the ZIP
+before reading anything else. <code>.gitattributes</code> keeps Windows line endings in the <code>.bat</code> and leaves the built
+website (<code>web/</code>) out of GitHub's ZIP download, which keeps it at about 1 MB. Tesseract is optional, for scans.
+<code>.streamlit/config.toml</code> holds the theme and settings.</p>
 <h3 id="server-edition-editionsserver">Server edition: <code>editions/server/</code></h3>
 <p><code>Dockerfile</code> (Python slim + Tesseract, runs as a non-root user) and <code>compose.yaml</code> (port 8501, <strong>read-only
 file system</strong> with an in-memory <code>/tmp</code>, health check). <strong>It has no login of its own</strong>: put it behind your
 organisation's sign-in (SSO / reverse proxy) on the internal network. Never expose it to the public internet.</p>
+<h2 id="run-it-on-your-computer">Run it on your computer</h2>
+<p>The Desktop edition, for large files, scanned documents or working offline. Same app, same results; files never
+leave the computer. The landing page offers it under <strong>Run it on your computer</strong>, with the visitor's system
+pre-selected. Full user instructions:
+<a href="https://github.com/georgethesixth/anyrecon/blob/main/editions/desktop/README.md">editions/desktop/README.md</a>.</p>
+<p><strong>Download:</strong> <a href="https://github.com/georgethesixth/anyrecon/archive/refs/heads/main.zip">the ZIP</a> (about 1 MB). It
+unzips into a folder called <code>anyrecon-main</code>.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Windows</th>
+<th>Mac</th>
+<th>Linux</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Start</td>
+<td>Double-click <code>Start anyrecon (Windows).bat</code></td>
+<td>Right-click <code>Start anyrecon (Mac).command</code> → Open → Open</td>
+<td><code>bash start-anyrecon-linux.sh</code></td>
+</tr>
+<tr>
+<td>First-time warning</td>
+<td>"Windows protected your PC" → More info → Run anyway</td>
+<td>"unidentified developer" → the right-click handles it</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>python.org installer, tick "Add python.exe to PATH"; installs for your user, no admin rights</td>
+<td>python.org installer; may ask for your password</td>
+<td><code>sudo apt install python3 python3-venv</code> or equivalent</td>
+</tr>
+<tr>
+<td>Stop</td>
+<td>Close the black window</td>
+<td>Close the Terminal window</td>
+<td>Ctrl+C</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What it needs:</strong></p>
+<ul>
+<li><strong>Python 3.10 or newer.</strong> The launcher checks and helps install it.</li>
+<li><strong>Internet on the first run only</strong>, to download its components from pypi.org into the folder (2–5 minutes).
+  After that it works offline.</li>
+<li><strong>Optional:</strong> Tesseract, to read scanned documents.</li>
+</ul>
+<p><strong>What it changes on the computer:</strong> nothing outside its own folder. Delete the folder to remove it.</p>
+<p><strong>When it won't work, and what to do:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>What happens</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IT doesn't allow installing Python</td>
+<td>The launcher can't find Python</td>
+<td>Use the Browser edition, or ask IT</td>
+</tr>
+<tr>
+<td>IT blocks <code>.bat</code> or <code>.command</code> files</td>
+<td>Nothing runs</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>The company network blocks pypi.org</td>
+<td>"Setup could not download what it needs"</td>
+<td>Ask IT to allow pypi.org once, or do the first run on another network; the launcher resumes where it stopped</td>
+</tr>
+<tr>
+<td>The folder is read-only (e.g. inside a ZIP preview, or a synced drive)</td>
+<td>"Could not create the environment"</td>
+<td>Unzip properly and move the folder to Documents</td>
+</tr>
+<tr>
+<td>Port 8501 is in use</td>
+<td>Streamlit says so</td>
+<td>anyrecon is already running in another window</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Updating:</strong> download the new ZIP, copy any saved setups (<code>.json</code>) across, delete the old folder. The first start
+sets itself up again.</p>
+<p><strong>Tested:</strong> the Linux launcher, end to end from a clean download, including resuming an interrupted setup. The
+Windows and Mac launchers follow the same steps but have not yet been run on real machines by the maintainer.
+Reports welcome.</p>
 <h2 id="outputs">Outputs</h2>
 <p><strong>Excel report</strong> (<code>report.write_excel</code>):</p>
 <table>
@@ -799,8 +906,16 @@ anyrecon run -f processor=proc.csv -f bank=bank.pdf \
 <td><code>build.py</code> (builds the static site), <code>check.py</code> (end-to-end test), <code>prefetch.txt</code> (UI pieces to preload).</td>
 </tr>
 <tr>
+<td><code>Start anyrecon (Windows).bat</code>, <code>Start anyrecon (Mac).command</code>, <code>start-anyrecon-linux.sh</code>, <code>START HERE.txt</code></td>
+<td>Desktop edition launchers and instructions, at the root so users find them in the download.</td>
+</tr>
+<tr>
 <td><code>editions/desktop/</code>, <code>editions/server/</code></td>
-<td>Launchers; Docker files. Each has a README for end users.</td>
+<td>Desktop user guide; Server Docker files. Each has a README for end users.</td>
+</tr>
+<tr>
+<td><code>.gitattributes</code></td>
+<td>Keeps <code>web/</code> out of GitHub's ZIP download and Windows line endings in the <code>.bat</code>.</td>
 </tr>
 <tr>
 <td><code>web/</code></td>
@@ -881,8 +996,11 @@ git add -A &amp;&amp; git commit &amp;&amp; git push                            
 <li><strong>Day/month order</strong> is assumed day-first when the data can't tell.</li>
 <li><strong>Server edition has no login</strong>; it relies on your organisation's.</li>
 <li><strong>The Change panel</strong> covers the key and the files; amount/date columns and fees are under Advanced.</li>
-<li><strong>Untested platforms:</strong> the Windows launcher and the Docker image have not been run end to end by the
+<li><strong>Untested platforms:</strong> the Windows and Mac launchers and the Docker image have not been run end to end by the
   maintainer yet. Reports welcome.</li>
+<li><strong>The Desktop edition needs Python and, on first run, access to pypi.org.</strong> A ready-to-run app per system (no
+  Python needed) is on the roadmap; without paid code-signing it would show the same "unidentified developer"
+  warnings.</li>
 </ul>
 <p>Ideas on the roadmap: FX rates; applying fixed fees; connectors that pull files from processor APIs or SFTP; a
 local AI option with no data leaving the machine; saved setups selectable from the Simple flow.</p>

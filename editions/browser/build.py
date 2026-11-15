@@ -87,6 +87,12 @@ LANDING_JS = r"""
     land.querySelectorAll("[data-go]").forEach((x) => { x.disabled = true; });
     b.innerHTML = '<span class="spin"></span>Getting ready…';
   });
+  // Pre-select the visitor's system in "Run it on your computer".
+  try {
+    const plat = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "").toLowerCase();
+    const os = /mac|iphone|ipad/.test(plat) ? "mac" : (/linux|x11/.test(plat) && !/android/.test(plat)) ? "linux" : "win";
+    const r = document.getElementById("os-" + os); if (r) r.checked = true;
+  } catch (e) {}
   const slow = setTimeout(() => { if (!ready) status("", "Preparing engine (first visit is slower)"); }, 25000);
   const obs = new MutationObserver(() => {
     if (!root.querySelector(".ar-ready")) return;

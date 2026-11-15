@@ -35,7 +35,7 @@ report (JSON), as many as you need. For each pair you choose, anyrecon:
 | | **Browser** | **Desktop** | **Server** |
 |---|---|---|---|
 | Best for | Anyone, including locked-down work laptops | Large files, scanned documents | IT teams serving a whole organisation |
-| Install | None: [open the link](https://anyrecon.vercel.app) | Python, once | Docker |
+| Install | None: [open the link](https://anyrecon.vercel.app) | [Download the ZIP](https://github.com/georgethesixth/anyrecon/archive/refs/heads/main.zip), double-click `Start anyrecon`. Needs Python | Docker |
 | Your files | Stay in the browser tab | Stay on your computer | Stay on your company's server |
 | Scanned documents | – | ✓ | ✓ |
 | AI commentary | – | Optional | Optional |
