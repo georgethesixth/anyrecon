@@ -30,7 +30,7 @@ from anyrecon.discover import discover
 from anyrecon.ingest import UnreadableFile, list_sheets, load, load_each_sheet
 from anyrecon.match import KeySpec
 from anyrecon.pci import PCIBlocked
-from anyrecon.profile import profile
+from anyrecon.profile import pick_amount, pick_date, profile
 from anyrecon.report import audit_json, write_excel
 
 import ui_theme as ui
@@ -117,6 +117,18 @@ if ss.view == "home":
     st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
     st.stop()
 
+def _rule_line(cfg):
+    keys = []
+    for k in cfg.keys:
+        keys.append(f"{k.left_col} = {k.right_col}" if k.mode == "key" else f"{k.left_col} found in {k.right_col}"
+                    if k.mode == "extract_right" else f"{k.right_col} found in {k.left_col}" if k.mode == "extract_left"
+                    else f"{k.left_col} ~ {k.right_col}")
+    parts = ["Matched on " + (", then ".join(keys) if keys else "amount and date")]
+    if cfg.expected_fee_pct:
+        parts.append(f"{cfg.expected_fee_pct:g}% fee deducted in {cfg.right} (detected)")
+    return " · ".join(parts)
+
+
 # ---------------------------------------------------------------- work area
 # Simple (default): add files → results. Pairs, rules and fees are worked out automatically and the
 # reconciliation runs by itself. Advanced shows every choice.
@@ -199,15 +211,35 @@ for name, (filename, data) in ss.uploads.items():
         st.error(str(e))
 ss.datasets = datasets
 
-# one line per file; anything that needs a decision opens by itself
-handled = [(d.name, f) for d in datasets.values() for f in d.findings if f.kind != "MASKED_PAN"]
-n_masked = sum(f.count for _, f in handled if f.kind.startswith("PAN") and f.kind != "PAN_EXEMPT")
-n_dropped = sum(1 for _, f in handled if f.kind.startswith("SAD") and f.action == "dropped")
-line = " · ".join(f"**{n}** {len(d):,} rows" for n, d in datasets.items())
-if handled:
-    line += f"  \n🔒 Card data protected: {n_masked:,} card numbers masked to first 6 / last 4" + (
-        f", {n_dropped} security-code column{'s' if n_dropped != 1 else ''} removed" if n_dropped else "") + "."
-st.markdown(line)
+# file cards: what was read, which columns hold the amount and date, card data handled, preview
+prof_cache = ss.setdefault("prof", {})
+
+
+def _roles(n, d):
+    k = (n, d.file_sha256, len(d))
+    if k not in prof_cache:
+        p = profile(d)
+        prof_cache[k] = (pick_amount(p), pick_date(p))
+    return prof_cache[k]
+
+
+if datasets:
+    st.markdown('<div class="ar-h3">Your files</div>', unsafe_allow_html=True)
+    items, per = list(datasets.items()), 5
+    for i in range(0, len(items), per):
+        cols = st.columns(per)
+        for col, (name, ds) in zip(cols, items[i:i + per]):
+            am, dt = _roles(name, ds)
+            masked = sum(f.count for f in ds.findings if f.kind.startswith("PAN") and f.kind != "PAN_EXEMPT")
+            dropped = sum(1 for f in ds.findings if f.kind.startswith("SAD") and f.action == "dropped")
+            note = ", ".join(x for x in [f"{masked:,} card numbers masked" if masked else "",
+                                         f"{dropped} security column{'s' if dropped != 1 else ''} removed" if dropped else ""] if x)
+            needs = bool(ds.warnings or any(f.review for f in ds.findings))
+            with col, st.container(key=f"fcard_{i}_{name}"):
+                st.markdown(ui.file_card(name, ds.fmt, len(ds), len(ds.columns), am, dt, note, needs), unsafe_allow_html=True)
+                with st.popover("Preview", use_container_width=True):
+                    st.caption(f"{ds.source or name} · first 20 of {len(ds):,} rows" + (" · card numbers already masked" if masked else ""))
+                    st.dataframe(ds.df[[c for c in ds.df.columns if not c.startswith("__")]].head(20), width="stretch", hide_index=True)
 
 for name, ds in datasets.items():
     needs = bool(ds.warnings or any(f.review for f in ds.findings))
@@ -262,12 +294,103 @@ with st.spinner("Working out how your files link…"):
 
 configs = []
 if not ADV:
-    if not auto:
-        st.error("These files don't share a reference, or an amount and date pattern. Switch on Advanced to choose the matching yourself.")
-    for a, b in auto:
-        cfg = auto_config(ss.datasets[a], ss.datasets[b], date_window_days=window, candidates=cmap[(a, b)])[0]
+    def _okey(a, b):
+        return (a, b) if (a, b) in cmap else (b, a)
+
+    def _build(conn):
+        a, b = _okey(conn["a"], conn["b"])
+        L, R, c = ss.datasets[a], ss.datasets[b], cmap[_okey(conn["a"], conn["b"])]
+        cfg = auto_config(L, R, date_window_days=window, candidates=c)[0]
         cfg.amount_tol = tol
-        configs.append(cfg)
+        cand = None
+        if conn["ci"] is not None and conn["ci"] < len(c):
+            cand = c[conn["ci"]]
+            if cand.mode == "composite":
+                cfg.keys, cfg.use_composite = [], True
+            else:
+                cfg.keys = [KeySpec(cand.left_col, cand.right_col, cand.left_tf, cand.right_tf, cand.mode)]
+        else:
+            k0 = cfg.keys[0] if cfg.keys else None
+            cand = next((x for x in c if k0 and x.mode == k0.mode and x.left_col == k0.left_col and x.right_col == k0.right_col), None) \
+                or next((x for x in c if x.mode == "composite"), None)
+        return a, b, cfg, cand
+
+    dsig = "|".join(f"{n}:{d.file_sha256}:{len(d)}" for n, d in ss.datasets.items()) + f"|{window}"
+    if ss.get("conns_for") != dsig:
+        ss.conns, ss.conns_for, ss.editing = [{"a": a, "b": b, "ci": None} for a, b in auto], dsig, None
+    built = [_build(c) for c in ss.conns]
+    csig = hashlib.sha256((dsig + json.dumps([(c["a"], c["b"], c["ci"]) for c in ss.conns])).encode()).hexdigest()
+    confirmed = ss.get("confirmed") == csig
+
+    head = (f"How your files connect · {len(ss.conns)} connection{'s' if len(ss.conns) != 1 else ''} confirmed"
+            if confirmed else None)
+    box = st.expander(head, expanded=False) if confirmed else st.container()
+    with box:
+        if not confirmed:
+            st.markdown('<div class="ar-h3">How your files connect</div><p class="ar-sub">Proposed from the data. '
+                        'Check each match, change any that look wrong, then confirm.</p>', unsafe_allow_html=True)
+        edges = []
+        for a, b, cfg, cand in built:
+            if cand is None:
+                continue
+            pct = 100 * (cand.cov_left if len(ss.datasets[a]) <= len(ss.datasets[b]) else cand.cov_right)
+            lab = "amount + date" if cand.mode == "composite" else (cand.left_col if cand.mode != "extract_left" else cand.right_col)
+            card = (lambda u: "1" if u >= 0.98 else "*")
+            edges.append((a, b, str(lab)[:18], pct, card(cand.uniq_left) if cand.mode != "composite" else "*",
+                          card(cand.uniq_right) if cand.mode != "composite" else "*"))
+        st.markdown(ui.graph_svg([(n, len(d)) for n, d in ss.datasets.items()], edges), unsafe_allow_html=True)
+        if not ss.conns:
+            st.error("These files don't share a reference, or an amount and date pattern. Add a connection below or use Advanced.")
+
+        grid = st.columns(2)
+        for i, (conn, (a, b, cfg, cand)) in enumerate(zip(ss.conns, built)):
+            with grid[i % 2]:
+                L, R = ss.datasets[a], ss.datasets[b]
+                if cand is None:
+                    st.markdown(ui.conn_card(a, b, "No shared reference found for this pair.", 0, 0, len(L), len(R), []), unsafe_allow_html=True)
+                else:
+                    note = ("Then by amount and date for anything left over." if cfg.use_composite and cand.mode != "composite" else "")
+                    st.markdown(ui.conn_card(a, b, _rule_line(cfg), round(cand.cov_left * len(L)), round(cand.cov_right * len(R)),
+                                             len(L), len(R), cand.examples if cand.mode != "composite" else [], note),
+                                unsafe_allow_html=True)
+                with st.container(key=f"conn_btns_{i}", horizontal=True):
+                    if st.button("Done" if ss.editing == i else "Change", key=f"edit_{i}"):
+                        ss.editing = None if ss.editing == i else i; st.rerun()
+                    if st.button("Remove", key=f"rm_{i}"):
+                        ss.conns.pop(i); ss.editing = None; st.rerun()
+                if ss.editing == i:
+                    e1, e2 = st.columns(2)
+                    na = e1.selectbox("Connect", names, index=names.index(conn["a"]), key=f"ca_{i}")
+                    nb = e2.selectbox("with", [x for x in names if x != na],
+                                      index=max(0, [x for x in names if x != na].index(conn["b"])) if conn["b"] != na else 0, key=f"cb_{i}")
+                    if (na, nb) != (conn["a"], conn["b"]):
+                        ss.conns[i] = {"a": na, "b": nb, "ci": None}; st.rerun()
+                    c = cmap[_okey(na, nb)]
+                    if c:
+                        L2, R2 = ss.datasets[_okey(na, nb)[0]], ss.datasets[_okey(na, nb)[1]]
+                        opts = [f"{x.describe()}  ·  {round(100 * min(x.cov_left, x.cov_right))}% match" for x in c]
+                        cur = c.index(cand) if cand in c else 0
+                        pick = st.selectbox("Match on", opts, index=cur, key=f"ci_{i}_{na}_{nb}")
+                        if opts.index(pick) != cur:
+                            ss.conns[i]["ci"] = opts.index(pick); st.rerun()
+                    else:
+                        st.warning("No usable match between these two files.")
+        free = [(a, b) for a, b in combinations(names, 2)
+                if cmap[(a, b)] and not any({a, b} == {c["a"], c["b"]} for c in ss.conns)]
+        f1, f2 = st.columns([1, 1])
+        if free and f1.button("Add a connection", key="add_conn"):
+            ss.conns.append({"a": free[0][0], "b": free[0][1], "ci": None}); ss.editing = len(ss.conns) - 1; st.rerun()
+        if not confirmed and ss.conns:
+            if st.button("Confirm and reconcile", type="primary", key="confirm", use_container_width=True):
+                ss.confirmed = csig; ss.editing = None; st.rerun()
+
+    if not confirmed:
+        st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+        st.stop()
+    seen = set()
+    for a, b, cfg, cand in built:
+        if cand is not None and (a, b) not in seen:
+            seen.add((a, b)); configs.append(cfg)
 else:
     st.markdown(ui.step_head(2, "Pairs", "Chosen automatically. Add or remove pairs."), unsafe_allow_html=True)
     options = [f"{a} ⟷ {b}" for a, b in combinations(names, 2)]
@@ -341,18 +464,6 @@ if ss.get("run_sig") != sig:
     ss.run_sig = sig
 results, chain = ss.results, ss.chain
 results = dict(sorted(results.items(), key=lambda kv: -kv[1].summary["matched_groups"]))   # busiest pair first
-
-
-def _rule_line(cfg):
-    keys = []
-    for k in cfg.keys:
-        keys.append(f"{k.left_col} = {k.right_col}" if k.mode == "key" else f"{k.left_col} found in {k.right_col}"
-                    if k.mode == "extract_right" else f"{k.right_col} found in {k.left_col}" if k.mode == "extract_left"
-                    else f"{k.left_col} ~ {k.right_col}")
-    parts = ["Matched on " + (", then ".join(keys) if keys else "amount and date")]
-    if cfg.expected_fee_pct:
-        parts.append(f"{cfg.expected_fee_pct:g}% fee deducted in {cfg.right} (detected)")
-    return " · ".join(parts)
 
 
 # ---------------------------------------------------------------- results

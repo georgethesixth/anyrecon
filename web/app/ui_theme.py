@@ -126,7 +126,7 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 
 
 def css(_font_base=None) -> str:
-    return f"<style>{BASE_CSS}{ST_CSS}</style>"
+    return f"<style>{BASE_CSS}{ST_CSS}{CONN_CSS}</style>"
 
 
 def esc(s) -> str:
@@ -220,3 +220,111 @@ def step_head(n: int, title: str, intro: str = "") -> str:
 def pair_head(left: str, right: str, note: str = "") -> str:
     return (f'<div class="ar-pair">{esc(left)}<span>↔</span>{esc(right)}'
             + (f"<small>{esc(note)}</small>" if note else "") + "</div>")
+
+
+# ---------------------------------------------------------------- connections (Power BI–style model view)
+def _tone(pct: float) -> str:
+    return "#1F8A4C" if pct >= 90 else "#B26B00" if pct >= 60 else "#C2362B"
+
+
+def graph_svg(nodes: list[tuple[str, int]], edges: list[tuple[str, str, str, float, str, str]]) -> str:
+    """nodes: (name, rows). edges: (a, b, label, match %, cardinality at a, cardinality at b)."""
+    import math
+    n = len(nodes)
+    W, H, bw, bh = 1000, 300 if n > 2 else 170, 176, 56
+    cx, cy = W / 2, H / 2
+    if n == 2:
+        pos = {nodes[0][0]: (230, cy), nodes[1][0]: (W - 230, cy)}
+    else:
+        rx, ry = 360, (H - bh) / 2 - 8
+        pos = {nm: (cx + rx * math.cos(-math.pi / 2 + 2 * math.pi * i / n), cy + ry * math.sin(-math.pi / 2 + 2 * math.pi * i / n))
+               for i, (nm, _) in enumerate(nodes)}
+    linked = {x for e in edges for x in e[:2]}
+    out = [f'<svg class="ar-graph" viewBox="0 0 {W} {H}" role="img" aria-label="How the files connect" '
+           f'xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">']
+    for a, b, label, pct, ca, cb in edges:
+        (x1, y1), (x2, y2) = pos[a], pos[b]
+        col = _tone(pct)
+        out.append(f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" stroke="{col}" stroke-width="2"/>')
+        for (px, py), (qx, qy), card in (((x1, y1), (x2, y2), ca), ((x2, y2), (x1, y1), cb)):   # 1 / * near each box
+            d = math.hypot(qx - px, qy - py) or 1
+            t = min(0.45, (bw / 2 + 22) / d) if abs(qx - px) > abs(qy - py) * 3 else min(0.45, (bh / 2 + 18) / d)
+            ox = 11 if abs(qx - px) < abs(qy - py) else 0   # sit beside a steep line, not on it
+            out.append(f'<text x="{px + (qx - px) * t + ox:.0f}" y="{py + (qy - py) * t - (0 if ox else 6):.0f}" font-size="14" font-weight="700" '
+                       f'fill="{col}" text-anchor="middle">{esc(card)}</text>')
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        txt = f"{label} · {pct:.0f}%"
+        w = max(90, 7.2 * len(txt) + 18)
+        out.append(f'<rect x="{mx - w / 2:.0f}" y="{my - 13:.0f}" width="{w:.0f}" height="26" rx="13" fill="#fff" stroke="{col}"/>'
+                   f'<text x="{mx:.0f}" y="{my + 5:.0f}" font-size="13" fill="#14171F" text-anchor="middle">{esc(txt)}</text>')
+    for name, rows in nodes:
+        x, y = pos[name]
+        on = name in linked
+        out.append(f'<rect x="{x - bw / 2:.0f}" y="{y - bh / 2:.0f}" width="{bw}" height="{bh}" rx="10" fill="#fff" '
+                   f'stroke="{"#C9CED6" if on else "#C2362B"}" stroke-width="1.5"{"" if on else " stroke-dasharray=\"5 4\""}/>'
+                   f'<rect x="{x - bw / 2:.0f}" y="{y - bh / 2:.0f}" width="6" height="{bh}" rx="3" fill="{ACCENT if on else "#C2362B"}"/>'
+                   f'<text x="{x - bw / 2 + 18:.0f}" y="{y - 4:.0f}" font-size="15" font-weight="650" fill="#14171F">{esc(name[:20])}</text>'
+                   f'<text x="{x - bw / 2 + 18:.0f}" y="{y + 16:.0f}" font-size="12.5" fill="#5F6673">'
+                   f'{rows:,} rows{"" if on else " · not connected"}</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def conn_card(a: str, b: str, rule: str, la: int, lb: int, na: int, nb: int, examples: list, note: str = "") -> str:
+    """Power BI merge-style summary for one connection."""
+    pa, pb = (100 * la / na if na else 0), (100 * lb / nb if nb else 0)
+    pct = pa if na <= nb else pb    # judged on the smaller file: a partial extract can still match fully
+    col = _tone(pct)
+    ex = "".join(f'<tr><td>{esc(str(x)[:40])}</td><td class="eq">⟷</td><td>{esc(str(y)[:60])}</td></tr>' for x, y in examples[:3])
+    return (f'<div class="ar-conn"><div class="ar-conn-h"><b>{esc(a)}</b><span>↔</span><b>{esc(b)}</b>'
+            f'<em style="color:{col};border-color:{col}">{pct:.0f}% match</em></div>'
+            f'<div class="ar-conn-r">{esc(rule)}</div>'
+            f'<div class="ar-conn-bars"><div><span>Matches <b>{la:,}</b> of {na:,} {esc(a)} rows</span>'
+            f'<i><s style="width:{pa:.1f}%;background:{_tone(pa)}"></s></i></div>'
+            f'<div><span>Matches <b>{lb:,}</b> of {nb:,} {esc(b)} rows</span><i><s style="width:{pb:.1f}%;background:{_tone(pb)}"></s></i></div></div>'
+            + (f'<table class="ar-ex"><thead><tr><th>{esc(a)}</th><th></th><th>{esc(b)}</th></tr></thead><tbody>{ex}</tbody></table>' if ex else "")
+            + (f'<div class="ar-conn-n">{esc(note)}</div>' if note else "") + "</div>")
+
+
+def file_card(name: str, fmt: str, rows: int, cols: int, amount: str | None, date: str | None, card_note: str, warn: bool) -> str:
+    roles = " · ".join(f"{k}: <b>{esc(v)}</b>" for k, v in (("Amount", amount), ("Date", date)) if v) or "No amount or date column found"
+    return (f'<div class="ar-file{" warn" if warn else ""}"><div class="ar-file-h"><b>{esc(name)}</b><small>{esc(fmt)}</small></div>'
+            f'<div class="ar-file-m">{rows:,} rows · {cols} columns</div><div class="ar-file-r" title="{esc(amount or "")} / {esc(date or "")}">{roles}</div>'
+            f'<div class="ar-file-n">{"🔒 " + esc(card_note) if card_note else "&nbsp;"}</div></div>')
+
+
+CONN_CSS = """
+.ar-graph{width:100%;height:auto;display:block;background:var(--well);border:1px solid var(--line);border-radius:12px}
+.ar-conn{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fff}
+.ar-conn-h{display:flex;align-items:center;gap:8px;font-size:16px;color:var(--ink)}
+.ar-conn-h span{color:var(--faint)}
+.ar-conn-h em{margin-left:auto;font-style:normal;font-size:12.5px;font-weight:600;border:1px solid;border-radius:999px;padding:2px 9px}
+.ar-conn-r{margin-top:4px;color:var(--muted);font-size:14px}
+.ar-conn-bars{display:grid;grid-template-columns:1fr 1fr;gap:10px 22px;margin-top:12px}
+.ar-conn-bars span{display:block;font-size:13.5px;color:var(--ink2);margin-bottom:5px}
+.ar-conn-bars i{display:block;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.ar-conn-bars s{display:block;height:100%;text-decoration:none}
+.ar-ex{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;font-family:var(--mono)}
+.ar-ex th{font-family:var(--font);text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)}
+.ar-ex td{padding:5px 6px;border-bottom:1px solid var(--line);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+.ar-ex td.eq,.ar-ex th:nth-child(2){width:28px;color:var(--faint);text-align:center}
+.ar-conn-n{margin-top:10px;font-size:13px;color:var(--muted)}
+.ar-file{border:1px solid var(--line);border-radius:12px 12px 0 0;border-bottom:0;padding:11px 13px 8px;background:#fff}
+.ar-file-r{font-size:12.5px;color:var(--muted);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ar-file-r b{color:var(--ink2);font-weight:500}
+.ar-file.warn{border-color:#E8B44C;background:#FFFBF0}
+.ar-file-h{display:flex;align-items:baseline;gap:8px}
+.ar-file-h b{font-size:15px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ar-file-h small{color:var(--faint);font-size:12px;text-transform:uppercase}
+.ar-file-m{font-size:13px;color:var(--muted);margin-top:2px}
+.ar-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ar-chips span{font-size:12px;background:var(--well);border-radius:6px;padding:3px 7px;color:var(--ink2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ar-chips small{color:var(--faint);margin-right:5px}
+.ar-file-n{font-size:12.5px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[class*="st-key-fcard_"] [data-testid="stPopover"] button{border-radius:0 0 12px 12px!important;border-color:var(--line)!important;padding:5px!important;font-size:13px!important;color:var(--muted)!important}
+[class*="st-key-fcard_"] [data-testid="stMarkdownContainer"]{margin-bottom:-16px}
+[class*="st-key-conn_btns_"] button{padding:5px 12px!important;font-size:13.5px!important}
+.ar-h3{font-size:18px;font-weight:650;color:var(--ink);margin:26px 0 2px}
+.ar-sub{color:var(--muted);font-size:14px;margin:0 0 12px}
+@media (max-width:640px){.ar-conn-bars{grid-template-columns:1fr}}
+"""
