@@ -1,8 +1,7 @@
 """anyrecon web UI.   Run locally:  streamlit run app.py
 
-Local mode (default): files stay on your machine.
-Demo mode (ANYRECON_DEMO=1): uploads disabled, only bundled synthetic data. Use this for any
-public deployment so the hosted app can never receive real card or customer data.
+Files are held in memory for the session only; nothing is written to disk except a temporary
+copy during parsing, deleted immediately. See docs/GUIDE.md for the full data-handling model.
 """
 from __future__ import annotations
 
@@ -35,15 +34,11 @@ from anyrecon.report import audit_json, write_excel
 
 import ui_theme as ui
 
-DEMO = os.environ.get("ANYRECON_DEMO") == "1"
 BROWSER = sys.platform == "emscripten"
 EDITION = "Browser" if BROWSER else os.environ.get("ANYRECON_EDITION", "Desktop").title()
 WHERE = {"Browser": "Runs inside this browser tab. Files are never uploaded.",
          "Desktop": "Runs on this computer only.",
          "Server": "Hosted by your organisation."}.get(EDITION, "")
-SAMPLES = Path(__file__).parent / "examples" / "data"
-SAMPLE_FILES = [("processor", "processor.csv"), ("ledger", "ledger.xlsx"), ("bank", "bank_statement.pdf"),
-                ("settlement", "settlement_report.json")] + ([] if BROWSER else [("scan", "scanned_statement.png")])
 
 st.set_page_config(page_title="anyrecon", page_icon="◯", layout="wide", initial_sidebar_state="collapsed")
 st.markdown(ui.css(), unsafe_allow_html=True)
@@ -79,21 +74,6 @@ def _from_bytes(name, filename, data, sheet_mode, ov):
         tmp.unlink(missing_ok=True)
 
 
-def _load_samples():
-    if all((SAMPLES / f).exists() for _, f in SAMPLE_FILES):
-        ss.uploads = {n: (f, (SAMPLES / f).read_bytes()) for n, f in SAMPLE_FILES}
-    else:   # generate into a throwaway folder (works on read-only installs), keep in memory only
-        import shutil
-        from examples.generate_samples import main as gen
-        tmp = Path(tempfile.mkdtemp(prefix="anyrecon_samples_"))
-        try:
-            gen(out=tmp)
-            ss.uploads = {n: (f, (tmp / f).read_bytes()) for n, f in SAMPLE_FILES}
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-    ss.using_samples = True
-
-
 def _clear():
     for k in list(ss.keys()):
         del ss[k]
@@ -103,15 +83,10 @@ def _clear():
 if ss.view == "home":
     st.markdown(ui.home_top(WHERE), unsafe_allow_html=True)
     with st.container(key="home_actions"):
-        if DEMO:
-            if st.button("Try it with sample data", type="primary", key="try"):
-                _load_samples(); ss.view = "work"; st.rerun()
-        else:
-            c1, c2 = st.columns(2)
-            if c1.button("Start reconciling", type="primary", key="start"):
-                ss.view = "work"; st.rerun()
-            if c2.button("Try with sample data", key="try"):
-                _load_samples(); ss.view = "work"; st.rerun()
+        c1, c2 = st.columns(2)
+        if c1.button("Start reconciling", type="primary", key="start"):
+            ss.view = "work"; st.rerun()
+        c2.link_button("How it works and handles data", ui.GUIDE_URL)
     st.markdown(ui.home_where(WHERE, EDITION), unsafe_allow_html=True)
     st.markdown(ui.home_sections(EDITION, BROWSER), unsafe_allow_html=True)
     st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
@@ -147,21 +122,10 @@ ADV = ss.advanced
 if ADV:
     st.markdown(ui.step_head(1, "Documents"), unsafe_allow_html=True)
 types = ["csv", "tsv", "txt", "xlsx", "xlsm", "xls", "json", "pdf"] + ([] if BROWSER else ["png", "jpg", "jpeg", "tif", "tiff"])
-if DEMO:
-    st.info("Public demo: uploads are switched off. You're looking at synthetic sample data.")
-    if not ss.uploads:
-        _load_samples()
-else:
-    ups = st.file_uploader("Add your files: two or more. CSV, Excel, JSON or PDF" + ("" if BROWSER else ", or scans") + ".",
-                           accept_multiple_files=True, type=types,
-                           help="Scanned documents need the Desktop or Server edition." if BROWSER else None)
-    if ups:
-        ss.uploads = {Path(u.name).stem.replace(" ", "_")[:24]: (u.name, u.getvalue()) for u in ups}
-        ss.using_samples = False
-    elif not ss.get("using_samples"):
-        ss.uploads = {}
-    if not ups and not ss.get("using_samples") and st.button("Use sample data", key="try2"):
-        _load_samples(); st.rerun()
+ups = st.file_uploader("Add your files: two or more. CSV, Excel, JSON or PDF" + ("" if BROWSER else ", or scans") + ".",
+                       accept_multiple_files=True, type=types,
+                       help="Scanned documents need the Desktop or Server edition." if BROWSER else None)
+ss.uploads = {Path(u.name).stem.replace(" ", "_")[:24]: (u.name, u.getvalue()) for u in ups} if ups else {}
 
 if ADV:
     with st.expander("Settings"):

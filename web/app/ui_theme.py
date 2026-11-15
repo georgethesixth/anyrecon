@@ -10,6 +10,7 @@ import html
 ACCENT, INK, MUTED, LINE, WELL = "#2457D6", "#14171F", "#5F6673", "#E3E6EB", "#F5F6F8"
 REPO = "https://github.com/georgethesixth/anyrecon"
 AUTHOR_URL = "https://kemdi.co"
+GUIDE_URL = "https://anyrecon.vercel.app/guide.html"   # rendered from docs/GUIDE.md by the Browser build
 
 BASE_CSS = """
 :root{--accent:#2457D6;--accent-d:#1C46B0;--accent-soft:#EEF3FD;--ink:#14171F;--ink2:#2B303B;--muted:#5F6673;--faint:#8A909C;
@@ -38,6 +39,8 @@ BASE_CSS = """
 .ar-sec{padding:64px 0 0}
 .ar-sec h2{font-size:24px;letter-spacing:-.015em;font-weight:650;color:var(--ink);margin:0 0 6px}
 .ar-sec>p{color:var(--muted);font-size:15px;margin:0 0 22px}
+.ar-sec>p a{color:var(--accent)}
+.stLinkButton a{border-radius:8px!important;border:1px solid var(--line)!important;padding:12px 18px!important;font-size:15px!important;color:var(--ink)!important;background:#fff!important}
 .ar-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .ar-card{border:1px solid var(--line);border-radius:10px;padding:18px;background:#fff}
 .ar-card .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--accent-soft);color:var(--accent);
@@ -139,7 +142,7 @@ def logo(href: str = "#") -> str:
 
 def nav(extra: str = "") -> str:
     return (f'<nav class="ar-nav">{logo()}<div class="ar-navlinks">{extra}<a class="opt" href="#how">How it works</a>'
-            f'<a class="opt" href="#data">Your data</a><a href="{REPO}" target="_blank" rel="noopener">GitHub</a></div></nav>')
+            f'<a class="opt" href="{GUIDE_URL}" target="_blank" rel="noopener">Guide</a><a href="{REPO}" target="_blank" rel="noopener">GitHub</a></div></nav>')
 
 
 HERO_TITLE = "Reconcile any set of documents."
@@ -167,10 +170,10 @@ def home_sections(edition: str, browser: bool) -> str:
     steps = [
         ("Add your documents", "Processor exports, ledgers, bank statements, settlement reports. CSV, Excel, JSON or PDF"
          + ("" if browser else ", including scans") + ". Multi-tab workbooks are fine."),
-        ("Choose the pairs", "Say what should agree with what, e.g. processor and bank. Three or more documents are linked "
-         "into one view per transaction."),
-        ("Confirm the references", "anyrecon proposes the shared reference for each pair, even with prefixes, missing zeros "
-         "or references buried in narrations. Ranked, with examples."),
+        ("Check the connections", "anyrecon proposes how the files link, even through prefixes, missing zeros or references "
+         "buried in bank narrations, and shows how many rows each link matches, with examples."),
+        ("Confirm or change", "Accept the proposal or pick a different match. Matching then runs on fixed rules; a consistent "
+         "fee such as MDR is spotted and applied."),
         ("Review the breaks", "Missing items, amount differences, timing, duplicates and likely typos, each with a reason. "
          "Download the Excel report and an audit trail."),
     ]
@@ -185,12 +188,14 @@ def home_sections(edition: str, browser: bool) -> str:
     dl = "".join(f"<dt>{esc(a)}</dt><dd>{esc(b)}</dd>" for a, b in rows)
     return (f'<section class="ar-sec" id="how"><h2>How it works</h2><p>No setup and no account.</p>'
             f'<div class="ar-cards">{cards}</div></section>'
-            f'<section class="ar-sec" id="data"><h2>Your data</h2><p>Built for card and bank data.</p><dl class="ar-dl">{dl}</dl></section>')
+            f'<section class="ar-sec" id="data"><h2>Your data</h2><p>Built for card and bank data. '
+            f'<a href="{GUIDE_URL}#data-handling" target="_blank" rel="noopener">Full detail in the guide.</a></p><dl class="ar-dl">{dl}</dl></section>')
 
 
 def footer(version: str, edition: str) -> str:
     return (f'<footer class="ar-foot"><span>anyrecon {esc(version)} · {esc(edition)} edition</span>'
             f'<span>A project by <a href="{AUTHOR_URL}" target="_blank" rel="noopener">Kemdi Okoli</a> · '
+            f'<a href="{GUIDE_URL}" target="_blank" rel="noopener">Guide</a> · '
             f'<a href="{REPO}" target="_blank" rel="noopener">Source on GitHub</a></span></footer>')
 
 
@@ -198,7 +203,7 @@ def landing_page(edition: str, version: str, browser: bool) -> str:
     """The whole landing page as static HTML (Browser edition shows it before Python has started)."""
     status = '<span class="ar-status" id="arStatus"><i></i><em>Preparing engine</em></span>'
     actions = ('<div class="ar-actions"><button class="ar-btn primary" data-go="start">Start reconciling</button>'
-               '<button class="ar-btn" data-go="sample">Try with sample data</button></div>')
+               f'<a class="ar-btn" href="{GUIDE_URL}" target="_blank" rel="noopener">How it works and handles data</a></div>')
     return (f'<div class="ar-wrap">{nav(status)}<div class="ar-hero"><h1>{HERO_TITLE}</h1><p>{HERO_TEXT}</p>{actions}'
             f'{facts(edition)}</div>{home_sections(edition, browser)}{footer(version, edition)}</div>')
 

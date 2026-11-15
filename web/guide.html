@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: data: 'wasm-unsafe-eval' 'unsafe-eval'; worker-src 'self' blob: data:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="How anyrecon works and how it handles your data: the full technical guide.">
+<title>anyrecon · Guide</title>
+<link rel="stylesheet" href="./guide.css">
+</head>
+<body>
+<div class="ar-wrap"><nav class="ar-nav"><a class="ar-logo" href="./"><b>ar</b>anyrecon</a><div class="ar-navlinks"><a href="./">Open anyrecon</a><a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">GitHub</a></div></nav></div>
+<main class="g-body"><h1 id="anyrecon-how-it-works-and-how-it-handles-data">anyrecon: how it works and how it handles data</h1>
+<p>This is the full technical guide. It explains what the tool does at each step, exactly where your data goes
+(and doesn't), and how the code is organised, in enough detail for someone else to maintain or improve it.</p>
+<ul>
+<li><strong>Users:</strong> read <a href="#what-it-does">What it does</a> and <a href="#data-handling">Data handling</a>.</li>
+<li><strong>Contributors:</strong> read everything; <a href="#working-on-the-code">Working on the code</a> has the practical steps.</li>
+</ul>
+<p>Source: <a href="https://github.com/georgethesixth/anyrecon">github.com/georgethesixth/anyrecon</a>. Licence: MIT.
+Card-data compliance detail lives in <a href="https://github.com/georgethesixth/anyrecon/blob/main/docs/PCI_DSS.md">PCI_DSS.md</a>;
+this guide summarises it.</p>
+<h2 id="contents">Contents</h2>
+<ol>
+<li><a href="#what-it-does">What it does</a></li>
+<li><a href="#design-rules">Design rules</a></li>
+<li><a href="#data-handling">Data handling</a></li>
+<li><a href="#card-data-pci-dss">Card data (PCI DSS)</a></li>
+<li><a href="#the-pipeline-step-by-step">The pipeline, step by step</a></li>
+<li><a href="#the-app">The app</a></li>
+<li><a href="#the-three-editions">The three editions</a></li>
+<li><a href="#outputs">Outputs</a></li>
+<li><a href="#command-line">Command line</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#working-on-the-code">Working on the code</a></li>
+<li><a href="#known-limitations">Known limitations</a></li>
+<li><a href="#glossary">Glossary</a></li>
+</ol>
+<h2 id="what-it-does">What it does</h2>
+<p>You give anyrecon two or more files that should agree with each other: a processor export, a general ledger, a
+bank statement, a settlement report. They can be CSV, Excel, JSON, PDF or (in the Desktop and Server editions)
+scanned images. anyrecon:</p>
+<ol>
+<li><strong>Reads</strong> each file into a clean table, whatever its layout.</li>
+<li><strong>Protects card data</strong> in it before anything else happens.</li>
+<li><strong>Works out how the files connect</strong>: which column in one file corresponds to which column in another, even
+   when the values are formatted differently or buried inside free text such as a bank narration.</li>
+<li><strong>Shows you the proposed connections</strong> with how many rows each one matches and real example values, so you
+   can confirm them or pick a different match.</li>
+<li><strong>Matches the rows</strong> using fixed rules, in tiers.</li>
+<li><strong>Explains everything that doesn't match</strong>, with a reason for each row, and spots patterns such as a
+   percentage fee taken at settlement.</li>
+<li><strong>Produces</strong> an Excel report, a JSON audit trail and, optionally, a reusable setup file.</li>
+</ol>
+<h2 id="design-rules">Design rules</h2>
+<p>These are the rules every change should keep.</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Why</th>
+<th>Where it's enforced</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Matching is deterministic.</strong> Same inputs and same settings always give the same result.</td>
+<td>Reconciliations get audited. A result you can't reproduce is worthless.</td>
+<td><code>anyrecon/match.py</code> uses no randomness, no AI, no network.</td>
+</tr>
+<tr>
+<td><strong>Every match records the rule that made it.</strong></td>
+<td>An auditor must be able to see <em>why</em> two rows were paired.</td>
+<td><code>Matcher.record()</code> writes <code>tier</code>, <code>rule</code> and <code>confidence</code> on every match.</td>
+</tr>
+<tr>
+<td><strong>Card data is handled before anything else sees the file.</strong></td>
+<td>Nothing downstream (profiling, matching, reports, AI) can leak what it never received.</td>
+<td><code>ingest.load()</code> calls <code>pci.guard()</code> as its last step, before returning the dataset.</td>
+</tr>
+<tr>
+<td><strong>Nothing is stored.</strong></td>
+<td>No database means nothing to breach, back up or delete.</td>
+<td>No module writes data to disk except short-lived temporary files, deleted in <code>finally:</code> blocks.</td>
+</tr>
+<tr>
+<td><strong>AI may explain; it never decides a match.</strong></td>
+<td>Language models are not reproducible.</td>
+<td><code>anyrecon/llm.py</code> is only called for commentary and column labels, never from <code>match.py</code> or <code>discover.py</code>.</td>
+</tr>
+<tr>
+<td><strong>Proposals are measured on the data, not guessed from column names.</strong></td>
+<td>Column names lie; the values don't.</td>
+<td><code>discover.py</code> scores every candidate by value overlap and uniqueness.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="data-handling">Data handling</h2>
+<p>This section answers: where does a file go, what is kept, and what could leave the machine?</p>
+<h3 id="the-lifecycle-of-a-file">The lifecycle of a file</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>What happens</th>
+<th>Where the data is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. You pick files</td>
+<td>The browser reads them.</td>
+<td>In the page (Browser edition) or sent to the anyrecon process (Desktop: your own computer; Server: your organisation's server).</td>
+</tr>
+<tr>
+<td>2. Held for the session</td>
+<td>The raw bytes are kept in the session's memory (<code>st.session_state.uploads</code>).</td>
+<td>Memory only.</td>
+</tr>
+<tr>
+<td>3. Parsing</td>
+<td>Each file is written to a <strong>temporary file</strong> so the parsing libraries can open it, parsed, and the temporary file is <strong>deleted immediately</strong> (<code>app._from_bytes</code>, <code>finally: tmp.unlink()</code>).</td>
+<td>Browser: Pyodide's in-memory file system, never your disk. Desktop/Server: the operating system's temp folder for a fraction of a second.</td>
+</tr>
+<tr>
+<td>4. Card-data guard</td>
+<td>Card numbers masked, security codes and PIN data removed (see next section).</td>
+<td>Memory.</td>
+</tr>
+<tr>
+<td>5. Matching and results</td>
+<td>Parsed tables, proposals and results are cached in the session so changing a setting doesn't re-read every file.</td>
+<td>Memory.</td>
+</tr>
+<tr>
+<td>6. Downloads</td>
+<td>The Excel report is built in a temporary file, read into memory, the file deleted, then offered as a download.</td>
+<td>Generated in memory; saved only where <em>you</em> save it.</td>
+</tr>
+<tr>
+<td>7. End of session</td>
+<td><strong>Clear all</strong> deletes everything immediately. Closing the tab ends the session; Desktop/Server drop it shortly after (Streamlit's disconnected-session timeout).</td>
+<td>Gone.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Not kept anywhere:</strong> no database, no data logs, no analytics, no caches on disk. The Server edition runs with
+a read-only file system, so it physically can't write data to disk.</p>
+<p><strong>One caveat to be precise about:</strong> in the Desktop and Server editions, if the process is killed in the split
+second between writing a temporary file and deleting it, that file stays in the temp folder until the OS cleans
+it. The file holds the original upload, before masking.</p>
+<h3 id="what-can-leave-the-machine">What can leave the machine</h3>
+<table>
+<thead>
+<tr>
+<th>Edition</th>
+<th>Network traffic</th>
+<th>Your files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Browser</strong></td>
+<td>The page downloads its own code (Python runtime, engine, UI) from the site that served it. Nothing else.</td>
+<td><strong>Never sent anywhere.</strong> The page's security policy (<code>Content-Security-Policy: connect-src 'self'</code>) stops it from sending data to any other site, and the site has no endpoint that accepts uploads.</td>
+</tr>
+<tr>
+<td><strong>Desktop</strong></td>
+<td>First run downloads Python packages from PyPI. After that, none. The app listens on <code>127.0.0.1</code> only, so other computers can't reach it. Streamlit usage statistics are switched off.</td>
+<td>Stay on your computer.</td>
+</tr>
+<tr>
+<td><strong>Server</strong></td>
+<td>Whatever your organisation allows. No outbound calls unless AI commentary is switched on.</td>
+<td>Stay on your organisation's server.</td>
+</tr>
+<tr>
+<td><strong>Any, with AI commentary on</strong> (Desktop/Server, off by default)</td>
+<td>One request to the AI provider per explanation.</td>
+<td>Only summary figures, match rules and column names are sent. Row values are sent <strong>only</strong> if you also opt in to sharing samples (CLI <code>--share-samples</code>), and then at most 15 exception rows, already masked.</td>
+</tr>
+</tbody>
+</table>
+<p>The public site at anyrecon.vercel.app is the Browser edition. Vercel, like any web host, logs that a visit
+happened (time, address, which file was requested). Your files are not part of any request, so they are not in
+those logs.</p>
+<h3 id="how-the-browser-edition-is-locked-down">How the Browser edition is locked down</h3>
+<ul>
+<li><strong>Everything is served from the same site.</strong> The Python runtime (Pyodide), the UI framework (stlite/Streamlit)
+  and every Python package are copied into the site at build time. No CDNs, no package downloads at runtime. This
+  also means it works behind corporate proxies that block PyPI or CDNs.</li>
+<li><strong>Security headers</strong> (set in <code>vercel.json</code> and repeated in the page itself):</li>
+<li><code>connect-src 'self'</code>: the page may only fetch from its own site.</li>
+<li><code>form-action 'none'</code>, <code>base-uri 'none'</code>, <code>object-src 'none'</code>.</li>
+<li><code>script-src</code> allows <code>blob:</code> and <code>data:</code> because the Python worker is started from one; <code>'wasm-unsafe-eval'</code>
+    and <code>'unsafe-eval'</code> because Pyodide compiles WebAssembly and Python bytecode.</li>
+<li><code>Referrer-Policy: no-referrer</code>, <code>X-Content-Type-Options: nosniff</code>, <code>Cross-Origin-Opener-Policy: same-origin</code>,
+    and a <code>Permissions-Policy</code> that switches off camera, microphone and geolocation.</li>
+<li><strong>A known harmless console message:</strong> before a download, stlite checks a placeholder address
+  (<code>stlite.invalid</code>). The policy blocks it, as intended; downloads still work.</li>
+</ul>
+<h2 id="card-data-pci-dss">Card data (PCI DSS)</h2>
+<p>Code: <code>anyrecon/pci.py</code>, function <code>guard()</code>. It runs on every dataset straight after parsing.</p>
+<h3 id="what-it-detects-and-does-default-strict-mode">What it detects and does (default <code>strict</code> mode)</h3>
+<table>
+<thead>
+<tr>
+<th>Data</th>
+<th>How it's detected</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Card security codes (CVV/CVC/CID)</strong></td>
+<td>Column name contains a CVV word (cvv, cvc, cvv2, cid, csc, "security code"…) and ≥80% of values are 3–4 digits.</td>
+<td>Column <strong>removed</strong>. Security codes are never kept, not even masked (PCI DSS 3.3.1).</td>
+</tr>
+<tr>
+<td><strong>PIN / PIN block</strong></td>
+<td>Column name contains pin / pin block.</td>
+<td>Column <strong>removed</strong>.</td>
+</tr>
+<tr>
+<td><strong>Magnetic-stripe track data</strong></td>
+<td>Column name says track/magstripe, or values match the track-1/track-2 pattern.</td>
+<td>Column <strong>removed</strong>.</td>
+</tr>
+<tr>
+<td><strong>Full card numbers (PAN)</strong></td>
+<td>13–19 digits (spaces or dashes allowed), first digit 2–6, passes the Luhn check.</td>
+<td><strong>Masked</strong> to first 6 and last 4 (<code>510510******4101</code>), in every column including free text (PCI DSS 3.4.1).</td>
+</tr>
+<tr>
+<td><strong>A column that <em>is</em> card numbers</strong></td>
+<td>≥50% of values are pure 13–19 digit numbers and ≥90% of those pass Luhn.</td>
+<td>Masked, plus a hidden token column <code>__tok_&lt;column&gt;</code>: a keyed HMAC-SHA256 of the full number, so the card number can still be used to match rows without being kept (PCI DSS 3.5.1.1).</td>
+</tr>
+<tr>
+<td><strong>Already-masked card numbers</strong></td>
+<td>Values look like <code>123456******1234</code>.</td>
+<td>Left as they are and noted.</td>
+</tr>
+<tr>
+<td><strong>References that happen to pass Luhn</strong></td>
+<td>A digit column where most values are 13–19 digits but under half pass Luhn: these are transaction references, and a few will pass Luhn by chance (1 in 10).</td>
+<td>Left as they are, and flagged with a <strong>"Mask anyway"</strong> option.</td>
+</tr>
+<tr>
+<td><strong>Unlabelled columns next to card numbers</strong> that look like CVVs (3–4 digits, generic or hinting name) or PIN blocks (16 hex characters)</td>
+<td>Only checked when the file has card numbers.</td>
+<td><strong>Removed to be safe</strong>, with an option for you to restore it after confirming it isn't card security data. Your decision is recorded in the report.</td>
+</tr>
+</tbody>
+</table>
+<p>Every action is recorded as a <em>finding</em> (<code>models.Finding</code>): column, kind, action, count, explanation. Findings
+never contain the sensitive values themselves. They appear on the file cards, in the Excel report's "PCI log"
+sheet and in the audit JSON.</p>
+<h3 id="modes">Modes</h3>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>strict</code> (default)</td>
+<td>As above.</td>
+</tr>
+<tr>
+<td><code>paranoid</code></td>
+<td>Also masks Luhn-passing values in reference columns. Safer, but can break matching on references that look like card numbers.</td>
+</tr>
+<tr>
+<td><code>block</code></td>
+<td>Refuses to load any file that contains a full card number or security data.</td>
+</tr>
+</tbody>
+</table>
+<p>Change it under <strong>Advanced → Settings → Card data</strong>, or with <code>--pci</code> on the command line.</p>
+<h3 id="tokens">Tokens</h3>
+<p>Tokens are keyed with a random secret generated when the program starts, so they only match within one run.
+Set <code>ANYRECON_PAN_KEY</code> (Server edition: in your secrets manager) for tokens that stay the same across runs.</p>
+<h3 id="who-is-responsible-for-what">Who is responsible for what</h3>
+<p>See <a href="https://github.com/georgethesixth/anyrecon/blob/main/docs/PCI_DSS.md">PCI_DSS.md</a> for the full scenario
+table. In short: the guard makes sure the tool's <em>outputs</em> never contain full card numbers or security data,
+but the <em>input</em> files you load are your organisation's responsibility. Run the Desktop or Server edition inside
+your card-data environment, or use the Browser edition, which never sends the files anywhere.</p>
+<h2 id="the-pipeline-step-by-step">The pipeline, step by step</h2>
+<pre><code>files ─▶ ingest ─▶ PCI guard ─▶ profile ─▶ discover ─▶ connect ─▶ match ─▶ insights ─▶ chains ─▶ report
+         ingest.py  pci.py      profile.py discover.py  chain.py   match.py match.py    chain.py   report.py
+</code></pre>
+<h3 id="1-ingest-anyreconingestpy">1. Ingest: <code>anyrecon/ingest.py</code></h3>
+<p><code>load(path, name, sheet, pci_mode, mask_columns, keep_columns) → Dataset</code></p>
+<p><strong>Readers by format</strong></p>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CSV / TSV / TXT</td>
+<td>Encoding tried in order: UTF-8 (with BOM), cp1252, Latin-1. Delimiter picked from <code>,</code> <code>;</code> tab <code>\|</code> by which gives the most consistent column count over the first 60 lines.</td>
+</tr>
+<tr>
+<td>Excel (.xlsx/.xlsm/.xls)</td>
+<td>All sheets read as text. Hidden sheets ignored. Default: the visible sheet with the most data. Options: one named sheet; stack all sheets with the same layout (monthly tabs; adds a <code>Sheet</code> column); or one dataset per sheet (<code>load_each_sheet</code>). Password-protected files are detected and explained.</td>
+</tr>
+<tr>
+<td>JSON</td>
+<td>A list of records, or an object containing one (the longest list is used). Nested fields flattened (<code>pd.json_normalize</code>).</td>
+</tr>
+<tr>
+<td>PDF</td>
+<td><code>pdfplumber</code> table extraction per page; falls back to text-aligned extraction when no ruled table is found. Pages with no text layer are OCR'd (Desktop/Server).</td>
+</tr>
+<tr>
+<td>Images (.png/.jpg/.tif)</td>
+<td>Tesseract OCR. Columns are anchored to the detected header line by horizontal position. Every row keeps its lowest word confidence in <code>__ocr_conf</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Turning raw rows into a table</strong> (<code>frame_from_raw</code>)</p>
+<ol>
+<li>Drop empty rows and columns.</li>
+<li><strong>Find the header row</strong> in the first 30 rows: the row scoring highest on fill × share of label-like cells ×
+   uniqueness × how well the rows below it are filled. Rows above it (report titles, account details) are skipped.</li>
+<li>Name blank headers <code>col_N</code>; de-duplicate repeated names (<code>Amount</code>, <code>Amount_2</code>).</li>
+<li>Remove <strong>repeated header rows</strong> (multi-page PDFs) and <strong>total / balance rows</strong> (<code>Total</code>, <code>Opening balance</code>,
+   <code>Balance b/f</code>, <code>Carried forward</code>…).</li>
+<li>PDFs and scans: <strong>join wrapped narrations</strong> back onto the row above (a row with only one text cell filled).</li>
+<li>Warn when some rows have far fewer cells than the rest (often a summary box on the same page).</li>
+</ol>
+<p><strong>Every row keeps its origin</strong> in the hidden <code>__row</code> column: <code>L12</code> (line 12), <code>Sheet1!R40</code>, <code>P3:R7</code> (page 3,
+row 7), <code>J5</code> (JSON record 5), <code>P2:O14</code> (page 2, OCR line 14). Reports use these so you can find the row in the
+original file.</p>
+<p><strong>Sanity fixes</strong> (<code>sanity_fix</code>), each logged as a note or warning on the file:</p>
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Long IDs in scientific notation (<code>4.28E+11</code>)</td>
+<td><strong>Warning</strong>: digits are already lost (Excel keeps 15 significant digits) and can't be recovered; re-export without opening in Excel.</td>
+</tr>
+<tr>
+<td>Whole numbers stored as decimals (<code>42833770659.0</code>)</td>
+<td>Trailing <code>.0</code> removed.</td>
+</tr>
+<tr>
+<td>Excel serial dates (<code>45931</code>) in a date column</td>
+<td>Converted to dates.</td>
+</tr>
+<tr>
+<td>Several currencies in one column</td>
+<td><strong>Warning</strong>: amounts are compared as plain numbers; split by currency first.</td>
+</tr>
+<tr>
+<td>Separate Debit and Credit columns</td>
+<td>Combined into <code>Amount (Dr/Cr)</code> plus <code>Direction</code> (DR/CR).</td>
+</tr>
+</tbody>
+</table>
+<p>Errors a user can act on are raised as <code>UnreadableFile</code> with a plain explanation (encrypted file, no table
+found, scanned document in the Browser edition).</p>
+<h3 id="2-profile-anyreconprofilepy">2. Profile: <code>anyrecon/profile.py</code></h3>
+<p><code>profile(dataset) → {column: ColumnProfile}</code>. For each column:</p>
+<ul>
+<li><strong>kind</strong>: <code>id</code>, <code>amount</code>, <code>date</code>, <code>text</code>, <code>category</code> or <code>other</code>, decided from the values (share parseable as
+  amount or date, uniqueness, length, letters vs digits), with the column name as a tie-breaker.</li>
+<li><strong>semantic</strong> label from the name: rrn, session_id, stan, reference, batch, amount, fee, balance, date,
+  narration, merchant, status, pan.</li>
+<li>Statistics used later: uniqueness, average length, most common <em>shape</em> (<code>A-9999</code> style), date format.</li>
+<li><strong>Ambiguous day/month order</strong> (e.g. all dates ≤ 12th) is noted; day-first is assumed, which fits Nigerian and
+  most non-US exports.</li>
+</ul>
+<p><code>parse_amount</code> handles <code>1,234.56</code>, <code>(1,234.56)</code> for negatives, <code>1.234,56</code>, currency symbols and codes, <code>CR</code>/<code>DR</code>
+suffixes. <code>parse_date</code> tries the formats in <code>DATE_FORMATS</code> and keeps the one that parses the most values.</p>
+<p><code>pick_amount</code> and <code>pick_date</code> choose each file's main amount and date column (prefers names like amount, gross,
+transaction date; avoids fee, balance, VAT). These are the "Amount" and "Date" shown on each file card.</p>
+<h3 id="3-discover-how-two-files-connect-anyrecondiscoverpy">3. Discover how two files connect: <code>anyrecon/discover.py</code></h3>
+<p><code>discover(left, right) → [KeyCandidate…]</code>, best first. Three families of candidate, all measured on the data:</p>
+<p><strong>a) Column = column.</strong> For every likely identifier column on each side, try each transform on both sides and
+measure the overlap:</p>
+<table>
+<thead>
+<tr>
+<th>Transform</th>
+<th>Turns</th>
+<th>Into</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exact</code></td>
+<td><code>TX-00123</code></td>
+<td><code>TX-00123</code></td>
+</tr>
+<tr>
+<td><code>alnum</code></td>
+<td><code>tx 00123</code></td>
+<td><code>TX00123</code></td>
+</tr>
+<tr>
+<td><code>nozeros</code></td>
+<td><code>00042833770659</code></td>
+<td><code>42833770659</code></td>
+</tr>
+<tr>
+<td><code>noprefix</code></td>
+<td><code>NX-0004283</code></td>
+<td><code>4283</code></td>
+</tr>
+<tr>
+<td><code>digits</code></td>
+<td><code>RRN:0428-3377</code></td>
+<td><code>4283377</code></td>
+</tr>
+<tr>
+<td><code>last12</code> / <code>last10</code> / <code>last8</code></td>
+<td>long reference</td>
+<td>its last N characters</td>
+</tr>
+</tbody>
+</table>
+<p>Simpler transforms win ties (each has a weight just under 1). Columns of free text only use <code>exact</code>/<code>alnum</code>
+here; finding IDs inside text is the next family's job.</p>
+<p><strong>b) Identifier inside free text</strong> (bank narrations, descriptions). For an ID column on one side and a text column
+on the other, <code>find_in_text</code> looks for any of the <em>known</em> IDs inside each text, in two passes: as a whole token
+(<code>POS SETTL/042833770659/X</code>), then by scanning the text with separators removed (<code>0428 3377 0659</code>). It never
+tries to parse the narration's format; it only looks for IDs it already knows, so wording and position don't
+matter. Keys shorter than 8 characters are only accepted as whole tokens, because a short number appears inside
+a long one by chance too often.</p>
+<p><strong>c) Amount + date</strong> (when no shared identifier exists): each row's amount must appear on the other side within
+the date window. Rows where several candidates qualify count as ambiguous and lower the score.</p>
+<p><strong>Scoring.</strong> For each candidate:</p>
+<ul>
+<li><code>cov_left</code>, <code>cov_right</code>: share of rows on each side whose transformed value is found on the other side.</li>
+<li>Coverage score = <strong>0.8 × coverage of the smaller file + 0.2 × coverage of the larger file</strong>. A 14-row extract
+  that fully matches a 300-row export is a perfect connection even though it covers 5% of the export.</li>
+<li>Multiplied by √(uniqueness) (an ID shared by many rows is a weak link), the transform weight, and a small bonus
+  when both column names mean the same thing. Text extraction is weighted 0.96–0.97; amount + date 0.85 and
+  reduced by its ambiguity.</li>
+<li>Up to 3 example value pairs are kept for display.</li>
+</ul>
+<p>Only the best transform per column pair is kept; the top 8 candidates are returned. For speed, the left file is
+sampled to 20,000 rows during discovery (matching itself always uses every row).</p>
+<h3 id="4-decide-which-files-to-connect-anyreconchainpy">4. Decide which files to connect: <code>anyrecon/chain.py</code></h3>
+<ul>
+<li><code>pair_score(candidates)</code>: the best identifier score, or half the amount + date score when there's no
+  identifier.</li>
+<li><code>auto_pairs(datasets)</code>: scores every pair of files and keeps the strongest links that connect every file once,
+  a maximum spanning tree (Kruskal). Two files give one connection; <em>n</em> files give at most <em>n − 1</em>. Links scoring
+  under 0.3 are left out, and a file with no good link shows as "not connected".</li>
+<li><code>auto_config(left, right)</code>: turns the candidates into a matching setup. Keys used: identifier candidates
+  scoring ≥ 0.15, in score order, while each is at least half as good as the best, up to 2 (the second runs as a
+  fallback tier). Amount and date columns from <code>pick_amount</code> / <code>pick_date</code>. Date window 3 days. Amount tolerance
+  0.01.</li>
+</ul>
+<p>The user sees these proposals and can change or remove any of them before anything runs (see <a href="#the-app">The app</a>).</p>
+<h3 id="5-match-anyreconmatchpy">5. Match: <code>anyrecon/match.py</code></h3>
+<p><code>reconcile(left, right, PairConfig) → PairResult</code>. Matching runs in <strong>tiers</strong>. Each tier only sees rows that no
+earlier tier matched, so the strongest evidence always wins.</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Pairs rows by</th>
+<th>Base confidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key1</code>, <code>key2</code>…</td>
+<td>One per key in the setup: identical transformed values, or an ID found inside the other side's text.</td>
+<td>1.00 exact, 0.98 transformed, 0.95 found in text (×0.95 if found only by scanning with separators removed)</td>
+</tr>
+<tr>
+<td><code>aggregate</code> (optional)</td>
+<td>Many rows on one side summing to one row on the other, grouped by a column such as settlement batch.</td>
+<td>0.85</td>
+</tr>
+<tr>
+<td><code>composite</code></td>
+<td>Same amount within the date window, <strong>only when the pairing is unique both ways</strong> and the signs agree (a refund never pairs with a sale).</td>
+<td>0.70</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Within a key tier</strong>, for each key value:</p>
+<ul>
+<li>1 row vs 1 row: a match.</li>
+<li>1 row vs many (e.g. one settlement line vs the batch's transactions): if the many sum to the one, a 1:n match;
+  otherwise if exactly one of them matches the amount, that one is matched and the rest are flagged
+  <code>duplicate_key</code>; otherwise the group is recorded with its variance (e.g. a short-paid batch).</li>
+<li>Many vs many: paired off by amount; leftovers flagged <code>duplicate_key</code>.</li>
+</ul>
+<p><strong>Each match gets a status:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>matched</code></td>
+<td>Amount within tolerance and dates within the window.</td>
+</tr>
+<tr>
+<td><code>amount_variance</code></td>
+<td>Linked, but the amounts differ by more than the tolerance.</td>
+</tr>
+<tr>
+<td><code>date_variance</code></td>
+<td>Linked, but the dates are further apart than the window.</td>
+</tr>
+<tr>
+<td><code>needs_review</code></td>
+<td>A row came from OCR with confidence under 80%. OCR rows are never auto-confirmed.</td>
+</tr>
+</tbody>
+</table>
+<p>Confidence is multiplied by 0.6 for anything not <code>matched</code>.</p>
+<p><strong>Amount rules.</strong> Amounts are compared as absolute values by default. A match is within tolerance when the
+difference is ≤ the absolute tolerance (default 0.01) <strong>or</strong> ≤ the percentage tolerance (default 0). With an
+expected fee <em>f</em>%, the right side is expected to be left × (1 − <em>f</em>/100), e.g. a bank credit net of a 1.5% MDR.</p>
+<p><strong>Unmatched rows</strong> become exceptions: <code>missing_in_&lt;other file&gt;</code>, or a more specific reason recorded during
+matching (<code>duplicate_key</code>, <code>ambiguous_amount</code> when several rows on the other side share the amount and date).</p>
+<p><strong>Near-miss suggestions</strong> for unmatched rows (<code>_suggestions</code>):</p>
+<ul>
+<li>possible key typo: an unmatched key ≥ 85% similar to an unmatched key on the other side;</li>
+<li>for narration matches: a narration that <em>nearly</em> contains an unmatched ID (≥ 90% similar) where the amount
+  and date also agree, which usually means a typo or an OCR misread.</li>
+</ul>
+<p>Similarity uses <code>rapidfuzz</code> when installed, otherwise Python's <code>difflib</code> (<code>anyrecon/fuzzy.py</code>).</p>
+<h3 id="6-insights-and-automatic-fee-detection">6. Insights and automatic fee detection</h3>
+<p><code>Matcher._insights</code> looks at the amount variances (needs at least 5):</p>
+<ul>
+<li>If ≥ 70% of them sit within ±0.05 percentage points of the same percentage, it reports a <strong>percentage fee</strong>
+  (e.g. MDR) and records it as <code>detected_fee_pct</code>.</li>
+<li>If ≥ 70% differ by the same fixed amount, it reports a <strong>fixed per-transaction fee</strong>.</li>
+<li>If the median date gap of matches is ≥ 1 day, it reports the <strong>settlement lag</strong> (T+1, T+2).</li>
+</ul>
+<p><code>chain.reconcile_auto</code> uses this: when a percentage fee between 0 and 20% is detected and no fee was set, it
+re-runs the pair with that fee and keeps the re-run <strong>only if it matches more</strong>. Results then say
+"1.5% fee deducted in bank (detected)".</p>
+<h3 id="7-chains-across-three-or-more-files-chainbuild_chains">7. Chains across three or more files: <code>chain.build_chains</code></h3>
+<p>With several connections, every match is a link between rows of two files. The chain view picks an <strong>anchor</strong>
+file (the one in the most connections), and for each anchor row follows the links through every other file. A
+row reaching every file is <code>complete</code> (or <code>complete_with_variance</code>); otherwise <code>partial</code> with the missing files
+listed. Rows in other files that never reach the anchor are listed as <code>only_in_&lt;file&gt;</code>.</p>
+<p>Tracing never passes back through another anchor row, so one settlement batch that covers 30 transactions does
+not merge those 30 transactions into one chain.</p>
+<h3 id="8-reports-anyreconreportpy-anyrecontemplatespy">8. Reports: <code>anyrecon/report.py</code>, <code>anyrecon/templates.py</code></h3>
+<p>See <a href="#outputs">Outputs</a>.</p>
+<h2 id="the-app">The app</h2>
+<p><code>app.py</code> (Streamlit) is one script that reruns top to bottom on every interaction; expensive steps are cached in
+<code>st.session_state</code> under keys built from the file hash and settings, so a rerun only recomputes what changed.
+<code>ui_theme.py</code> holds the look (CSS) and the HTML pieces: landing page, file cards, connection diagram and cards.</p>
+<h3 id="flow">Flow</h3>
+<ol>
+<li><strong>Landing page.</strong> In the Browser edition this is plain HTML in <code>index.html</code>, shown instantly while the
+   engine loads behind it (see <a href="#browser">Browser edition</a>).</li>
+<li><strong>Add files.</strong> One upload box; files are named after their file name.</li>
+<li><strong>Your files.</strong> A card per file: format, rows, columns, detected amount and date columns, card-data actions,
+   and a <strong>Preview</strong> of the first 20 rows (already masked). Anything needing a decision (a suspected security-code
+   column, a warning) opens automatically.</li>
+<li><strong>How your files connect.</strong> The proposals from <code>auto_pairs</code> / <code>auto_config</code>:</li>
+<li>a diagram: files as boxes, connections as lines labelled with the key and match %; colour green ≥ 90%,
+     amber ≥ 60%, red below; <strong>1</strong> or <strong>*</strong> at each end shows whether the key is unique on that side (uniqueness
+     ≥ 98%) or repeats (e.g. one batch ID on many transactions);</li>
+<li>a card per connection: the rule, "Matches X of Y rows" for both files with bars, and three real example
+     pairs. The headline % is judged on the smaller file;</li>
+<li><strong>Change</strong> (pick the two files and the match from the ranked candidates, each with its match %),
+     <strong>Remove</strong>, <strong>Add a connection</strong>;</li>
+<li><strong>Confirm and reconcile</strong>. Nothing runs before this.</li>
+<li><strong>Results.</strong> A summary line, <strong>Excel report</strong> and <strong>Audit trail</strong> downloads, a tab per connection (busiest
+   first) and an <strong>All documents</strong> tab for chains. Each connection shows what it matched on, five figures,
+   insights, and a switch between Exceptions, Matches and each side's unmatched rows.</li>
+</ol>
+<p>Confirmation is tied to a signature of the files and the connections. Change a file or a connection and you're
+asked to confirm again; change nothing and the results come straight from the cache.</p>
+<h3 id="advanced">Advanced</h3>
+<p>The <strong>Advanced</strong> switch shows every choice the simple flow makes for you: card-data mode, date window, amount
+tolerance; sheet handling for multi-sheet workbooks; per-file previews and column profiles; pairs; the keys for
+each pair in priority order; amount and date columns; expected fee (0 means detect automatically); percentage
+tolerance; the amount + date fallback; and saving or loading a setup file.</p>
+<h2 id="the-three-editions">The three editions</h2>
+<p>All three run the same engine and app and give the same results.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Browser</th>
+<th>Desktop</th>
+<th>Server</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Runs</td>
+<td>In the browser tab (Pyodide: Python compiled to WebAssembly)</td>
+<td>On your computer (Python + Streamlit)</td>
+<td>In a Docker container</td>
+</tr>
+<tr>
+<td>Install</td>
+<td>None</td>
+<td>Python, once; the launcher does the rest</td>
+<td>Docker</td>
+</tr>
+<tr>
+<td>Scans / OCR</td>
+<td>No (Tesseract can't run in a browser)</td>
+<td>Yes, with Tesseract installed</td>
+<td>Yes, included</td>
+</tr>
+<tr>
+<td>AI commentary</td>
+<td>No</td>
+<td>Optional</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td>Practical size</td>
+<td>Tens of thousands of rows per file</td>
+<td>Limited by RAM</td>
+<td>Limited by RAM; uploads up to 200 MB per file</td>
+</tr>
+</tbody>
+</table>
+<p><a id="browser"></a></p>
+<h3 id="browser-edition-editionsbrowser">Browser edition: <code>editions/browser/</code></h3>
+<p><code>build.py</code> assembles a static site:</p>
+<ol>
+<li>Downloads stlite (Streamlit for the browser) from npm at a pinned version, and Pyodide (the Python runtime).</li>
+<li>Works out the Python packages the app needs. Pure-Python wheels are bundled and imported straight from the
+   wheel at start-up (<code>app.py</code> adds them to <code>sys.path</code>), including <code>pdfplumber</code> and <code>pdfminer</code>.</li>
+<li>Copies the app (<code>app.py</code>, <code>ui_theme.py</code>, <code>anyrecon/*.py</code>) into the site.</li>
+<li>Writes <code>index.html</code> with:</li>
+<li>the landing page as static HTML (<code>ui_theme.landing_page</code>), shown at once;</li>
+<li>the security policy;</li>
+<li><code>boot.js</code>, which starts the engine underneath the landing page, shows "Preparing engine" → "Ready" in the
+     top bar, carries a click made before it's ready through once it is, and <strong>prefetches the UI pieces</strong> listed
+     in <code>prefetch.txt</code> in the background (with retries), so nothing has to be downloaded when results appear;</li>
+<li>a fallback notice with a <strong>Reload</strong> button if a piece still fails to load.</li>
+<li>Renders this guide (<code>docs/GUIDE.md</code>) to <code>guide.html</code>.</li>
+</ol>
+<p>The site is published by committing the built <code>web/</code> folder; Vercel serves it as static files
+(<code>vercel.json</code>: no build step, security headers, long cache for the immutable runtime files; <code>.vercelignore</code>:
+only <code>web/</code> and <code>vercel.json</code> are uploaded).</p>
+<p>Browser-specific behaviour in the code: <code>sys.platform == "emscripten"</code>. Things to know:</p>
+<ul>
+<li><strong>pdfminer's debug logging is switched off</strong> (<code>ingest.py</code>). In the browser every log line is forwarded to the
+  page, which made PDF parsing about 80 times slower and could crash the tab.</li>
+<li>OCR raises a clear "use the Desktop or Server edition" error.</li>
+<li>The first visit downloads tens of megabytes (the Python runtime and packages); the runtime files are marked
+  immutable, so later visits load them from the browser cache.</li>
+</ul>
+<h3 id="desktop-edition-editionsdesktop">Desktop edition: <code>editions/desktop/</code></h3>
+<p>Double-click launchers for Windows (<code>.bat</code>), Mac (<code>.command</code>) and Linux (<code>.sh</code>). First run: checks for Python,
+creates a private environment in <code>.venv</code> inside the folder, installs anyrecon with the UI and OCR extras. Every
+run: starts Streamlit on <code>127.0.0.1</code> with usage statistics off and opens the browser. No administrator rights
+needed. Tesseract is optional, for scans. <code>.streamlit/config.toml</code> holds the theme and settings.</p>
+<h3 id="server-edition-editionsserver">Server edition: <code>editions/server/</code></h3>
+<p><code>Dockerfile</code> (Python slim + Tesseract, runs as a non-root user) and <code>compose.yaml</code> (port 8501, <strong>read-only
+file system</strong> with an in-memory <code>/tmp</code>, health check). <strong>It has no login of its own</strong>: put it behind your
+organisation's sign-in (SSO / reverse proxy) on the internal network. Never expose it to the public internet.</p>
+<h2 id="outputs">Outputs</h2>
+<p><strong>Excel report</strong> (<code>report.write_excel</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Sheet</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Summary</td>
+<td>One row per connection: rows, matched groups, exceptions, match rates by count and value, totals; then the insights.</td>
+</tr>
+<tr>
+<td>Chains</td>
+<td>The chain view (when there are 3+ files).</td>
+</tr>
+<tr>
+<td><code>&lt;pair&gt; matches</code></td>
+<td>Every match: id, tier, cardinality (1:1, 1:n…), status, key, rows on each side, amounts, expected amount after fee, difference, date gap, confidence, rule.</td>
+</tr>
+<tr>
+<td><code>&lt;pair&gt; exceptions</code></td>
+<td>Every break with category, rows, amounts, reason and suggestion.</td>
+</tr>
+<tr>
+<td><code>&lt;pair&gt; L-only</code> / <code>R-only</code></td>
+<td>The unmatched rows themselves (masked).</td>
+</tr>
+<tr>
+<td>PCI log</td>
+<td>Every card-data action.</td>
+</tr>
+<tr>
+<td>Audit</td>
+<td>Engine version, run time, each input's name, SHA-256 hash, rows and format, parsing notes, and each connection's full setup.</td>
+</tr>
+</tbody>
+</table>
+<p>The report contains rows from your files (with card numbers masked), so treat it like the source files.</p>
+<p><strong>Audit trail (JSON)</strong> (<code>report.audit_json</code>): engine and Python version, run time, each input's hash, rows,
+format, column fingerprint, notes and card-data findings, and each connection's setup, summary and insights.
+<strong>No row data.</strong></p>
+<p><strong>Setup file</strong> (<code>templates.py</code>, Advanced → Save setup): file names, column names, layout fingerprints and the
+matching rules. <strong>No data values</strong>, so it is safe to share or commit. Loading it on next month's files checks the
+layout and warns about missing or changed columns.</p>
+<h2 id="command-line">Command line</h2>
+<p><code>anyrecon</code> (installed with the package) does everything the app does, for scripting and scheduled jobs.</p>
+<pre><code class="language-bash">anyrecon inspect FILE...                       # parse; show card-data actions, notes, column profiles
+anyrecon suggest LEFT RIGHT [--window 3]       # ranked identifier candidates for one pair
+anyrecon run -f processor=proc.csv -f bank=bank.pdf \
+             [-p processor:bank]               # pairs (default: first file vs each other)
+             [--fee processor:bank=1.5]        # expected fee on the right side
+             [--window 3] [--tol 0.01]
+             [--template setup.json] [--save-template setup.json]
+             [-i]                              # confirm keys and columns interactively
+             [--out report.xlsx] [--audit audit.json]
+             [--explain [--share-samples]]     # AI commentary (needs ANTHROPIC_API_KEY)
+# on every command:
+             [--pci strict|paranoid|block] [--mask-col name:column] [--keep-col name:column]
+</code></pre>
+<p>Exit codes: 2 = blocked by card-data <code>block</code> mode; 3 = a file couldn't be read.</p>
+<h2 id="configuration">Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ANYRECON_PAN_KEY</code></td>
+<td>Secret for card-number tokens that stay the same across runs.</td>
+</tr>
+<tr>
+<td><code>ANYRECON_EDITION</code></td>
+<td><code>desktop</code> (default) or <code>server</code>; changes the wording only.</td>
+</tr>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>Turns on optional AI commentary (Desktop/Server, needs <code>pip install anthropic</code>).</td>
+</tr>
+<tr>
+<td><code>ANYRECON_LLM_MODEL</code></td>
+<td>Model for the commentary.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="working-on-the-code">Working on the code</h2>
+<h3 id="repository-layout">Repository layout</h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>anyrecon/</code></td>
+<td>The engine (no UI code). <code>models</code> data structures · <code>ingest</code> reading files · <code>pci</code> card-data guard · <code>profile</code> column types · <code>discover</code> connection candidates · <code>chain</code> pairing, fee re-run, chains · <code>match</code> matching tiers · <code>report</code> Excel and audit · <code>templates</code> setup files · <code>llm</code> optional AI · <code>fuzzy</code> similarity · <code>cli</code> command line</td>
+</tr>
+<tr>
+<td><code>app.py</code></td>
+<td>The Streamlit app used by all three editions.</td>
+</tr>
+<tr>
+<td><code>ui_theme.py</code></td>
+<td>CSS and HTML pieces for the app and the static landing page.</td>
+</tr>
+<tr>
+<td><code>.streamlit/config.toml</code></td>
+<td>Streamlit theme and settings (Desktop/Server).</td>
+</tr>
+<tr>
+<td><code>editions/browser/</code></td>
+<td><code>build.py</code> (builds the static site), <code>check.py</code> (end-to-end test), <code>prefetch.txt</code> (UI pieces to preload).</td>
+</tr>
+<tr>
+<td><code>editions/desktop/</code>, <code>editions/server/</code></td>
+<td>Launchers; Docker files. Each has a README for end users.</td>
+</tr>
+<tr>
+<td><code>web/</code></td>
+<td>The built Browser edition, served by Vercel. Generated: rebuild, don't edit.</td>
+</tr>
+<tr>
+<td><code>examples/generate_samples.py</code></td>
+<td>Writes synthetic, deliberately messy test files (CSV, Excel, PDF, JSON, a scan) to <code>examples/data/</code>. Fake card numbers use test-only ranges.</td>
+</tr>
+<tr>
+<td><code>tests/test_engine.py</code></td>
+<td>Engine tests.</td>
+</tr>
+<tr>
+<td><code>scripts/pan_scan.py</code></td>
+<td>Pre-commit hook that blocks commits containing card numbers.</td>
+</tr>
+<tr>
+<td><code>docs/</code></td>
+<td>This guide and the PCI DSS notes.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="set-up">Set up</h3>
+<pre><code class="language-bash">git clone https://github.com/georgethesixth/anyrecon &amp;&amp; cd anyrecon
+python -m venv .venv &amp;&amp; . .venv/bin/activate
+pip install -e &quot;.[ui,ocr,dev]&quot;
+pre-commit install                     # card-number check on every commit (pip install pre-commit)
+python examples/generate_samples.py    # test files in examples/data/
+pytest                                 # engine tests
+streamlit run app.py                   # the app, as in the Desktop edition
+</code></pre>
+<h3 id="change-the-browser-edition">Change the Browser edition</h3>
+<pre><code class="language-bash">pip install markdown playwright &amp;&amp; python -m playwright install chromium
+python editions/browser/build.py --out web &amp;&amp; rm web/_headers     # needs npm and internet
+python editions/browser/check.py                                  # end-to-end test, outside network blocked
+git add -A &amp;&amp; git commit &amp;&amp; git push                              # Vercel redeploys
+</code></pre>
+<p>After upgrading stlite (<code>STLITE_VERSION</code> in <code>build.py</code>) or using a widget the app didn't use before, run
+<code>check.py --record-prefetch</code>, then rebuild, so the new UI pieces are preloaded. <code>build.py</code> warns when names in
+<code>prefetch.txt</code> no longer exist.</p>
+<h3 id="common-changes">Common changes</h3>
+<ul>
+<li><strong>A new file format:</strong> add a reader in <code>ingest.load()</code> that returns raw rows, pass them through
+  <code>frame_from_raw</code> (header detection and cleanup come free), give each row an origin id, and add a test.
+  The PCI guard runs automatically.</li>
+<li><strong>A new identifier transform:</strong> add it to <code>TRANSFORMS</code> in <code>discover.py</code> with a weight just under the simpler
+  ones, and to <code>apply_transform</code>. It is then tried for every column pair and usable as a key.</li>
+<li><strong>A new matching tier:</strong> add a method to <code>Matcher</code> that only looks at rows where <code>used</code> is false, calls
+  <code>self.record(...)</code> with a clear rule text and a base confidence, and call it from <code>run()</code> in the right order
+  (stronger evidence first).</li>
+<li><strong>A new insight:</strong> add it to <code>Matcher._insights</code>; keep it to facts computed from the matches.</li>
+<li><strong>UI:</strong> keep Simple mode free of choices that the data can answer; put manual control under Advanced.
+  New HTML pieces go in <code>ui_theme.py</code>; escape every value with <code>esc()</code>.</li>
+</ul>
+<h3 id="rules-for-contributions">Rules for contributions</h3>
+<ul>
+<li>Never let raw card data past <code>pci.guard</code>, and never add a code path that reads files without going through
+  <code>ingest.load</code>.</li>
+<li>Never commit real data. Use <code>examples/generate_samples.py</code> or invent values; the pre-commit hook blocks
+  card numbers.</li>
+<li>Matching stays deterministic: no randomness, no AI, no network in <code>match.py</code> / <code>discover.py</code>.</li>
+<li>Every new kind of match or exception explains itself in its <code>rule</code> or <code>detail</code> text.</li>
+<li>Add a test in <code>tests/</code> for every engine change. Run <code>editions/browser/check.py</code> for UI changes.</li>
+</ul>
+<h2 id="known-limitations">Known limitations</h2>
+<p>Honest list of what doesn't work yet, roughly in order of impact. Good places to contribute.</p>
+<ul>
+<li><strong>No currency conversion.</strong> Mixed currencies are flagged, not converted.</li>
+<li><strong>Only percentage fees are applied automatically.</strong> Fixed per-transaction fees are detected and reported but
+  not applied; and with automatic detection on, you can't force "no fee" (Advanced treats a fee of 0 as
+  "detect").</li>
+<li><strong>Scans need the Desktop or Server edition.</strong> OCR quality depends on the scan; low-confidence rows are always
+  sent for review.</li>
+<li><strong>Browser edition limits:</strong> the first visit downloads the Python runtime (about 20 seconds on a good line);
+  very large files (hundreds of thousands of rows) are slow or run out of memory in a browser tab.</li>
+<li><strong>Discovery samples 20,000 rows</strong> of the left file; near-miss suggestions look at up to 5,000 unmatched rows.</li>
+<li><strong>Day/month order</strong> is assumed day-first when the data can't tell.</li>
+<li><strong>Server edition has no login</strong>; it relies on your organisation's.</li>
+<li><strong>The Change panel</strong> covers the key and the files; amount/date columns and fees are under Advanced.</li>
+<li><strong>Untested platforms:</strong> the Windows launcher and the Docker image have not been run end to end by the
+  maintainer yet. Reports welcome.</li>
+</ul>
+<p>Ideas on the roadmap: FX rates; applying fixed fees; connectors that pull files from processor APIs or SFTP; a
+local AI option with no data leaving the machine; saved setups selectable from the Simple flow.</p>
+<h2 id="glossary">Glossary</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Connection</strong></td>
+<td>A pair of files that should agree, plus the rule that links their rows.</td>
+</tr>
+<tr>
+<td><strong>Key / identifier</strong></td>
+<td>A value both files share for the same transaction (RRN, STAN, session ID, reference).</td>
+</tr>
+<tr>
+<td><strong>Transform</strong></td>
+<td>A normalisation applied before comparing keys (strip zeros, prefixes, punctuation).</td>
+</tr>
+<tr>
+<td><strong>Tier</strong></td>
+<td>One matching pass. Later tiers only see rows earlier tiers left unmatched.</td>
+</tr>
+<tr>
+<td><strong>Exception / break</strong></td>
+<td>A row or group that didn't reconcile, with its reason.</td>
+</tr>
+<tr>
+<td><strong>Coverage</strong></td>
+<td>Share of a file's rows whose key is found in the other file.</td>
+</tr>
+<tr>
+<td><strong>Cardinality (1 / *)</strong></td>
+<td>Whether a key is unique in a file (1) or repeats (*), e.g. a batch ID across many transactions.</td>
+</tr>
+<tr>
+<td><strong>MDR</strong></td>
+<td>Merchant discount rate: the percentage fee deducted before settlement.</td>
+</tr>
+<tr>
+<td><strong>PAN</strong></td>
+<td>Primary account number: the full card number.</td>
+</tr>
+<tr>
+<td><strong>SAD</strong></td>
+<td>Sensitive authentication data: security codes, PIN data, magnetic-stripe track data. Never kept.</td>
+</tr>
+<tr>
+<td><strong>Luhn check</strong></td>
+<td>The checksum every real card number passes.</td>
+</tr>
+<tr>
+<td><strong>Chain</strong></td>
+<td>One transaction traced across three or more files.</td>
+</tr>
+</tbody>
+</table>
+<p class="g-edit">This page is generated from <a href="https://github.com/georgethesixth/anyrecon/blob/main/docs/GUIDE.md" target="_blank" rel="noopener">docs/GUIDE.md</a>.
+Found something wrong or out of date? <a href="https://github.com/georgethesixth/anyrecon/edit/main/docs/GUIDE.md" target="_blank" rel="noopener">Edit it on GitHub</a>.</p>
+</main>
+<div class="ar-wrap"><footer class="ar-foot"><span>anyrecon 0.1.0 · Browser edition</span><span>A project by <a href="https://kemdi.co" target="_blank" rel="noopener">Kemdi Okoli</a> · <a href="https://anyrecon.vercel.app/guide.html" target="_blank" rel="noopener">Guide</a> · <a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">Source on GitHub</a></span></footer></div>
+</body>
+</html>

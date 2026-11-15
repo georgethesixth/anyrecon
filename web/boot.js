@@ -53,24 +53,6 @@ const options = {
   "ui_theme.py": {
    "url": "./app/ui_theme.py"
   },
-  "examples/__init__.py": {
-   "url": "./app/examples/__init__.py"
-  },
-  "examples/generate_samples.py": {
-   "url": "./app/examples/generate_samples.py"
-  },
-  "examples/data/processor.csv": {
-   "url": "./app/examples/data/processor.csv"
-  },
-  "examples/data/ledger.xlsx": {
-   "url": "./app/examples/data/ledger.xlsx"
-  },
-  "examples/data/bank_statement.pdf": {
-   "url": "./app/examples/data/bank_statement.pdf"
-  },
-  "examples/data/settlement_report.json": {
-   "url": "./app/examples/data/settlement_report.json"
-  },
   "wheels/pdfplumber-0.11.10-py3-none-any.whl": {
    "url": "./app/wheels/pdfplumber-0.11.10-py3-none-any.whl"
   }
@@ -107,12 +89,6 @@ const options = {
   const enter = (go) => {
     document.documentElement.classList.remove("landing");
     land.classList.add("gone"); setTimeout(() => { land.hidden = true; }, 250); window.scrollTo(0, 0);
-    if (go === "sample") {   // press the app's own sample button
-      const t0 = Date.now(), iv = setInterval(() => {
-        const b = root.querySelector(".st-key-try2 button");
-        if (b) { clearInterval(iv); b.click(); } else if (Date.now() - t0 > 20000) clearInterval(iv);
-      }, 150);
-    }
   };
   land.addEventListener("click", (e) => {
     const b = e.target.closest("[data-go]"); if (!b) return;

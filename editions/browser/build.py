@@ -8,7 +8,7 @@ at run time, so it works behind corporate proxies and the page never needs to ta
     python editions/browser/build.py --pyodide-dir /path/to/pyodide-314.0.3/pyodide   # offline build
 
 Then upload the contents of site/ to any static host (kemdi.co, GitHub Pages, Netlify, an intranet server).
-Build machine needs: Python 3.10+, npm, internet (or --pyodide-dir), and reportlab for the sample files.
+Build machine needs: Python 3.10+, npm, internet (or --pyodide-dir), and the `markdown` package (renders the guide).
 """
 from __future__ import annotations
 
@@ -79,12 +79,6 @@ LANDING_JS = r"""
   const enter = (go) => {
     document.documentElement.classList.remove("landing");
     land.classList.add("gone"); setTimeout(() => { land.hidden = true; }, 250); window.scrollTo(0, 0);
-    if (go === "sample") {   // press the app's own sample button
-      const t0 = Date.now(), iv = setInterval(() => {
-        const b = root.querySelector(".st-key-try2 button");
-        if (b) { clearInterval(iv); b.click(); } else if (Date.now() - t0 > 20000) clearInterval(iv);
-      }, 150);
-    }
   };
   land.addEventListener("click", (e) => {
     const b = e.target.closest("[data-go]"); if (!b) return;
@@ -123,6 +117,64 @@ LANDING_JS = r"""
   }).observe(root, { childList: true, subtree: true });
 })();
 """
+
+
+GUIDE_CSS = """
+.g-body{max-width:820px;margin:0 auto;padding:8px 24px 40px;color:var(--ink);font:16px/1.65 var(--font);-webkit-font-smoothing:antialiased}
+.g-body h1{font-size:34px;letter-spacing:-.02em;line-height:1.15;margin:40px 0 12px}
+.g-body h2{font-size:24px;letter-spacing:-.01em;margin:48px 0 10px;padding-top:20px;border-top:1px solid var(--line)}
+.g-body h3{font-size:18px;margin:30px 0 8px}
+.g-body p,.g-body li{color:var(--ink2)}
+.g-body a{color:var(--accent)}
+.g-body code{font:13.5px var(--mono);background:var(--well);border-radius:5px;padding:1px 5px}
+.g-body pre{background:#0F1218;color:#E6E8EC;border-radius:10px;padding:14px 16px;overflow-x:auto;font:13px/1.55 var(--mono)}
+.g-body pre code{background:none;padding:0;color:inherit}
+.g-body table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:14.5px;display:block;overflow-x:auto}
+.g-body th,.g-body td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+.g-body th{background:var(--well);font-weight:600}
+.g-body hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+.g-body blockquote{margin:16px 0;padding:4px 16px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0}
+.g-edit{font-size:14px;color:var(--muted);margin-top:40px}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+"""
+
+
+def _guide(out: Path, ui) -> None:
+    """Render docs/GUIDE.md to guide.html, styled like the app, with no scripts."""
+    import markdown
+    src = (ROOT / "docs" / "GUIDE.md").read_text(encoding="utf-8")
+    body = markdown.markdown(src, extensions=["tables", "fenced_code", "toc"], output_format="html")
+    nav = (f'<nav class="ar-nav"><a class="ar-logo" href="./"><b>ar</b>anyrecon</a><div class="ar-navlinks">'
+           f'<a href="./">Open anyrecon</a><a href="{ui.REPO}" target="_blank" rel="noopener">GitHub</a></div></nav>')
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="{CSP}">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="How anyrecon works and how it handles your data: the full technical guide.">
+<title>anyrecon · Guide</title>
+<link rel="stylesheet" href="./guide.css">
+</head>
+<body>
+<div class="ar-wrap">{nav}</div>
+<main class="g-body">{body}
+<p class="g-edit">This page is generated from <a href="{ui.REPO}/blob/main/docs/GUIDE.md" target="_blank" rel="noopener">docs/GUIDE.md</a>.
+Found something wrong or out of date? <a href="{ui.REPO}/edit/main/docs/GUIDE.md" target="_blank" rel="noopener">Edit it on GitHub</a>.</p>
+</main>
+<div class="ar-wrap">{ui.footer(ui_version(), "Browser")}</div>
+</body>
+</html>
+"""
+    (out / "guide.css").write_text("body{margin:0;background:#fff;font-family:var(--font);-webkit-font-smoothing:antialiased}" + ui.BASE_CSS + GUIDE_CSS, encoding="utf-8")
+    (out / "guide.html").write_text(html, encoding="utf-8")
+    log("guide.html written")
+
+
+def ui_version() -> str:
+    return re.search(r'__version__\s*=\s*"([^"]+)"', (ROOT / "anyrecon" / "__init__.py").read_text()).group(1)
 
 
 def log(msg):
@@ -207,19 +259,12 @@ def main():
     nodeps = [f for f in pip_download(NO_DEPS_WHEELS, out / "wheels") if f.startswith("pdfplumber")]
     log(f"wheels: {', '.join(pure + nodeps)}")
 
-    # 4. The app itself + synthetic sample data
+    # 4. The app itself
     files = {}
     for p in sorted((ROOT / "anyrecon").glob("*.py")):
         files[f"anyrecon/{p.name}"] = p
     files["app.py"] = ROOT / "app.py"
     files["ui_theme.py"] = ROOT / "ui_theme.py"
-    files["examples/__init__.py"] = ROOT / "examples" / "__init__.py"
-    files["examples/generate_samples.py"] = ROOT / "examples" / "generate_samples.py"
-    samples = ROOT / "examples" / "data"
-    if not (samples / "processor.csv").exists():
-        subprocess.run([sys.executable, str(ROOT / "examples" / "generate_samples.py")], check=True)
-    for f in ["processor.csv", "ledger.xlsx", "bank_statement.pdf", "settlement_report.json"]:
-        files[f"examples/data/{f}"] = samples / f
     for w in nodeps:   # pure-Python, imported straight from the wheel (zip) at start-up: see app.py
         files[f"wheels/{w}"] = out / "wheels" / w
     for rel, src in files.items():
@@ -271,6 +316,7 @@ def main():
 </body>
 </html>
 """
+    _guide(out, ui)
     (out / "boot.css").write_text(ui.BASE_CSS + LANDING_CSS, encoding="utf-8")
     (out / "index.html").write_text(html, encoding="utf-8")
     # external file: the security policy forbids inline scripts

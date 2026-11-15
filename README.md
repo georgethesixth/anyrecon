@@ -4,6 +4,9 @@
 
 **▶ Try it now: [anyrecon.vercel.app](https://anyrecon.vercel.app)**. Runs in your browser; your files are never uploaded.
 
+**📖 [How it works and how it handles data](https://anyrecon.vercel.app/guide.html)**: the full technical guide
+([docs/GUIDE.md](docs/GUIDE.md)), detailed enough to maintain or improve the tool.
+
 ![Identifier discovery: ranked candidates with coverage and examples](docs/screenshot_setup.png)
 
 Drop in a processor export (CSV), a general ledger (Excel), a bank statement (PDF, even scanned), a settlement
@@ -44,8 +47,8 @@ All three run the same engine and give the same results.
 
 ```bash
 git clone <this repo> && cd anyrecon
-pip install -e ".[ui,ocr]"          # core needs only pandas, openpyxl, pdfplumber, rapidfuzz
-python examples/generate_samples.py # synthetic, deliberately messy data in examples/data/
+pip install -e ".[ui,ocr,dev]"      # core needs only pandas, openpyxl, pdfplumber
+python examples/generate_samples.py # synthetic, deliberately messy test files in examples/data/
 
 # web UI (local; files never leave your machine)
 streamlit run app.py      # same as the Desktop edition launchers
@@ -153,8 +156,10 @@ ingest ─► PCI guard ─► profile ─► discover ─► (user confirms) �
 ## Security
 
 Read [docs/PCI_DSS.md](docs/PCI_DSS.md). anyrecon stores nothing: no database, no logs, no cache; uploads
-live in memory for the session only. Short version: run it locally, never put a public instance online with uploads
-enabled (`ANYRECON_DEMO=1` disables them), and never commit real data. The pre-commit hook blocks card numbers.
+live in memory for the session only. Short version: use the Browser edition or run it locally, never put a Server instance on the public internet
+(it has no login of its own), and never commit real data. The pre-commit hook blocks card numbers.
+How every part of the tool handles data, step by step: [docs/GUIDE.md](docs/GUIDE.md)
+([rendered](https://anyrecon.vercel.app/guide.html)).
 
 ## License
 

@@ -17,10 +17,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ui = ["streamlit>=1.40", "rapidfuzz>=3.0", "reportlab"]   # rapidfuzz: faster hints; reportlab: sample data
+ui = ["streamlit>=1.40", "rapidfuzz>=3.0"]   # rapidfuzz: faster near-miss hints (falls back to difflib)
 ocr = ["pytesseract>=0.3", "Pillow"]   # also needs the tesseract binary
 ai = ["anthropic"]
-dev = ["pytest", "reportlab"]
+dev = ["pytest", "reportlab", "markdown"]   # reportlab: examples/generate_samples.py; markdown: guide page
 
 [project.scripts]
 anyrecon = "anyrecon.cli:main"

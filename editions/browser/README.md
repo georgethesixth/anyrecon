@@ -8,8 +8,7 @@ only allows it to load its own files.
 ## Use it
 
 1. Open **[anyrecon.vercel.app](https://anyrecon.vercel.app)** in Chrome or Edge.
-2. Wait for the first load (about a minute; later visits are quick).
-3. Drag in your files, or click **Try it with sample data**.
+2. Click **Start reconciling** and add your files. The page is usable straight away; the engine finishes loading in the background (about 20 seconds on a first visit).
 
 | Supported | Not in this edition (use Desktop or Server) |
 |---|---|
@@ -23,7 +22,7 @@ The live site is the prebuilt `web/` folder at the repo root, which Vercel serve
 sets the security headers, `.vercelignore` hides everything else). After changing the code:
 
 ```bash
-pip install reportlab                                   # for the sample files
+pip install markdown                                    # renders docs/GUIDE.md into guide.html
 python editions/browser/build.py --out web && rm web/_headers   # needs npm and internet (~80 MB)
 git add web && git commit -m "Rebuild browser edition" && git push   # Vercel redeploys automatically
 ```
