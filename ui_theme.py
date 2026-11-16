@@ -1,7 +1,7 @@
-"""Look and feel for the anyrecon UI (shared by the Browser, Desktop and Server editions).
+"""Look and feel for the anyrecon UI.
 
 Plain and practical: system fonts (nothing to download), white surfaces, grey hairlines, one blue accent.
-The landing page is plain HTML so the Browser edition can show it instantly while the engine loads.
+The landing page is plain HTML so it shows instantly while the engine loads in the background.
 """
 from __future__ import annotations
 
@@ -10,8 +10,19 @@ import html
 ACCENT, INK, MUTED, LINE, WELL = "#2457D6", "#14171F", "#5F6673", "#E3E6EB", "#F5F6F8"
 REPO = "https://github.com/georgethesixth/anyrecon"
 AUTHOR_URL = "https://kemdi.co"
-GUIDE_URL = "https://anyrecon.vercel.app/guide.html"   # rendered from docs/GUIDE.md by the Browser build
-DOWNLOAD_URL = REPO + "/archive/refs/heads/main.zip"   # web/ is export-ignored (.gitattributes): ~1 MB
+SITE = "https://anyrecon.vercel.app"
+GUIDE_URL = SITE + "/guide.html"           # rendered from docs/GUIDE.md by browser/build.py
+CHANGELOG_URL = SITE + "/changelog.html"   # rendered from CHANGELOG.md
+DOWNLOAD_URL = REPO + "/archive/refs/heads/main.zip"   # web/ is export-ignored (.gitattributes): about 1 MB
+
+# Measured with scripts/benchmark.py (three files of N rows each: processor, ledger, bank with references in
+# narrations and a fee) on a modest 2-core machine. Faster computers finish sooner. See the guide for the table.
+SIZE_GUIDE = {
+    "web": ("Up to about 250,000 rows per file (37 MB for three files). 500,000 at most",
+            "About 2 minutes for 100,000 rows per file, 4 minutes for 250,000"),
+    "download": ("Up to about 1,000,000 rows per file (150 MB for three files), with 8 GB of memory",
+                 "About 1 minute for 100,000 rows per file, 8 minutes for 1,000,000"),
+}
 
 BASE_CSS = """
 :root{--accent:#2457D6;--accent-d:#1C46B0;--accent-soft:#EEF3FD;--ink:#14171F;--ink2:#2B303B;--muted:#5F6673;--faint:#8A909C;
@@ -24,6 +35,9 @@ BASE_CSS = """
 .ar-navlinks{display:flex;align-items:center;gap:22px;font-size:14px}
 .ar-navlinks a{color:var(--muted);text-decoration:none}
 .ar-navlinks a:hover{color:var(--ink)}
+.ar-install{font:500 13.5px var(--font);color:#fff;background:var(--accent);border:0;border-radius:999px;padding:6px 12px;cursor:pointer}
+.ar-install:hover{background:var(--accent-d)}
+.ar-install[hidden]{display:none}
 .ar-hero{padding:72px 0 8px;max-width:720px}
 .ar-hero h1{font-size:clamp(32px,4.6vw,46px);line-height:1.1;letter-spacing:-.025em;font-weight:700;color:var(--ink);margin:0}
 .ar-hero p{font-size:18px;line-height:1.6;color:var(--muted);margin:18px 0 0;max-width:36em}
@@ -86,6 +100,17 @@ BASE_CSS = """
 .ar-os-panel code{font:13px var(--mono);background:var(--well);padding:1px 5px;border-radius:4px}
 .ar-os-note{padding:12px 22px 16px;font-size:13.5px;color:var(--muted);border-top:1px solid var(--line)}
 .ar-os-note a{color:var(--accent)}
+.ar-vt{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.ar-vt table{width:100%;border-collapse:collapse;font-size:15px}
+.ar-vt th,.ar-vt td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+.ar-vt tbody tr:last-child th,.ar-vt tbody tr:last-child td{border-bottom:0}
+.ar-vt thead th{background:var(--well);font-weight:650}
+.ar-vt thead a{color:var(--ink);text-decoration:none}
+.ar-vt thead a:hover{color:var(--accent)}
+.ar-vt tbody th{font-weight:600;color:var(--ink);width:22%}
+.ar-vt td{color:var(--ink2)}
+.ar-sec>p.ar-vt-note{font-size:13.5px;color:var(--muted);margin:12px 0 0}
+.ar-vt-note a{color:var(--accent)}
 .ar-results h2{font-size:22px!important;font-weight:650!important;margin:28px 0 2px!important;padding:0!important;color:var(--ink)}
 .ar-results p{color:var(--muted);font-size:15px;margin:0}
 .ar-pair{font-size:17px;font-weight:650;color:var(--ink);margin:30px 0 8px}
@@ -147,22 +172,18 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 
 
 # What the file picker says. Streamlit's default ("Upload", "200MB per file") suggests files leave the
-# machine, which in the Browser and Desktop editions they never do.
-PICKER_NOTE = {
-    "Browser": "or drag them here. They open in this browser tab and are never uploaded.",
-    "Desktop": "or drag them here. They open on this computer and are never sent anywhere.",
-    "Server": "or drag them here. They go to your organisation's anyrecon server only, and are not stored.",
-}
+# machine. They never do: the page opens them inside the browser tab.
+PICKER_NOTE = "or drag them here. They open in this browser tab and are never uploaded."
+PICKER_NOTE_DOWNLOAD = "or drag them here. They open on this computer and are never sent anywhere."
 
 
-def css(edition: str = "Desktop") -> str:
-    note = PICKER_NOTE.get(edition, PICKER_NOTE["Desktop"]).replace('"', "")
+def css(download: bool = False) -> str:
     picker = (
         '[data-testid="stFileUploaderDropzone"] button span:has(>[data-testid="stIconMaterial"]){display:none!important}'
         '[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p{font-size:0!important;line-height:0}'
         '[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after{content:"Choose files";font-size:14.5px;line-height:1.4}'
         '[data-testid="stFileUploaderDropzoneInstructions"] span{font-size:0!important}'
-        f'[data-testid="stFileUploaderDropzoneInstructions"] span::after{{content:"{note}";font-size:14px;color:var(--muted)}}'
+        f'[data-testid="stFileUploaderDropzoneInstructions"] span::after{{content:"{PICKER_NOTE_DOWNLOAD if download else PICKER_NOTE}";font-size:14px;color:var(--muted)}}'
     )
     return f"<style>{BASE_CSS}{ST_CSS}{CONN_CSS}{picker}</style>"
 
@@ -177,6 +198,7 @@ def logo(href: str = "#") -> str:
 
 def nav(extra: str = "") -> str:
     return (f'<nav class="ar-nav">{logo()}<div class="ar-navlinks">{extra}<a class="opt" href="#how">How it works</a>'
+            f'<a class="opt" href="#versions">Versions</a>'
             f'<a class="opt" href="{GUIDE_URL}" target="_blank" rel="noopener">Guide</a><a href="{REPO}" target="_blank" rel="noopener">GitHub</a></div></nav>')
 
 
@@ -185,26 +207,20 @@ HERO_TEXT = ("Add your files, choose which ones should agree, and anyrecon finds
              "line by line. Anything that doesn't match comes with a reason.")
 
 
-def home_top(where: str = "") -> str:
+def home_top() -> str:
     return f'{nav()}<div class="ar-hero"><h1>{HERO_TITLE}</h1><p>{HERO_TEXT}</p></div>'
 
 
-def facts(edition: str) -> str:
-    first = {"Browser": "Runs in this browser tab", "Desktop": "Runs on this computer",
-             "Server": "Runs on your organisation's server"}.get(edition, "Runs locally")
-    items = [first, "Files are never uploaded" if edition == "Browser" else "Nothing is sent anywhere",
-             "Card numbers masked", "Nothing stored"]
+def facts(download: bool = False) -> str:
+    items = (["Runs on this computer", "Nothing is sent anywhere"] if download else
+             ["Runs in your browser", "Files are never uploaded"]) + ["Card numbers masked", "Nothing stored"]
     return '<div class="ar-facts">' + "".join(f"<span>{esc(i)}</span>" for i in items) + "</div>"
 
 
-def home_where(where: str, edition: str) -> str:
-    return facts(edition)
-
-
-def home_sections(edition: str, browser: bool) -> str:
+def home_sections(download: bool = False) -> str:
     steps = [
-        ("Add your documents", "Processor exports, ledgers, bank statements, settlement reports. CSV, Excel, JSON or PDF"
-         + ("" if browser else ", including scans") + ". Multi-tab workbooks are fine."),
+        ("Add your documents", "Processor exports, ledgers, bank statements, settlement reports. CSV, Excel, JSON or PDF. "
+         "Multi-tab workbooks are fine."),
         ("Check the connections", "anyrecon proposes how the files link, even through prefixes, missing zeros or references "
          "buried in bank narrations, and shows how many rows each link matches, with examples."),
         ("Confirm or change", "Accept the proposal or pick a different match. Matching then runs on fixed rules; a consistent "
@@ -214,22 +230,55 @@ def home_sections(edition: str, browser: bool) -> str:
     ]
     cards = "".join(f'<div class="ar-card"><span class="n">{i}</span><h3>{esc(t)}</h3><p>{esc(b)}</p></div>'
                     for i, (t, b) in enumerate(steps, 1))
-    where = ("In this browser tab. Files are read here and never uploaded." if browser
-             else "On this computer." if edition == "Desktop" else "On your organisation's server.")
+    where = ("On this computer. Files are opened here and never sent anywhere." if download else
+             "In your browser tab. Files are opened here and never uploaded; the page is not allowed to send data anywhere.")
     rows = [("Where it runs", where),
             ("Card numbers", "Masked to the first six and last four digits on load. Security codes and PIN data are removed."),
             ("What is kept", "Nothing. Close the tab or clear the session and it's gone."),
             ("How matching works", "Fixed rules you can see, not guesses. Every match records the rule that made it.")]
     dl = "".join(f"<dt>{esc(a)}</dt><dd>{esc(b)}</dd>" for a, b in rows)
-    return (f'<section class="ar-sec" id="how"><h2>How it works</h2><p>No setup and no account.</p>'
-            f'<div class="ar-cards">{cards}</div></section>'
-            f'<section class="ar-sec" id="data"><h2>Your data</h2><p>Built for card and bank data. '
-            f'<a href="{GUIDE_URL}#data-handling" target="_blank" rel="noopener">Full detail in the guide.</a></p><dl class="ar-dl">{dl}</dl></section>'
-            + (download_section() if browser else ""))
+    sections = (f'<section class="ar-sec" id="how"><h2>How it works</h2><p>No setup and no account.</p>'
+                f'<div class="ar-cards">{cards}</div></section>'
+                f'<section class="ar-sec" id="data"><h2>Your data</h2><p>Built for card and bank data. '
+                f'<a href="{GUIDE_URL}#data-handling" target="_blank" rel="noopener">Full detail in the guide.</a></p>'
+                f'<dl class="ar-dl">{dl}</dl></section>')
+    return sections if download else sections + versions_section() + install_section() + download_section()
+
+
+def versions_section() -> str:
+    """Which version to use, by data size. Figures from scripts/benchmark.py (see SIZE_GUIDE)."""
+    (wr, wt), (dr, dt) = SIZE_GUIDE["web"], SIZE_GUIDE["download"]
+    rows = [("Best for", "Everyday reconciliations", "Large files and month-end volumes"),
+            ("Comfortable size", wr, dr),
+            ("Speed", wt, dt),
+            ("Install", "Nothing. Optionally add it as an app in two clicks", "Download a 1 MB ZIP; needs Python"),
+            ("Scanned documents", "No: use a digital export", "Yes, with Tesseract installed"),
+            ("Works offline", "Yes, once added as an app and opened once", "Yes, after the first run"),
+            ("Your files", "Stay in the browser", "Stay on your computer"),
+            ("Updates", "Automatic", "Download the new version")]
+    body = "".join(f"<tr><th>{esc(a)}</th><td>{esc(b)}</td><td>{esc(c)}</td></tr>" for a, b, c in rows)
+    return (f'<section class="ar-sec" id="versions"><h2>Which version?</h2><p>Same tool and same results. '
+            f'The difference is how much data each handles comfortably.</p><div class="ar-vt"><table>'
+            f'<thead><tr><th></th><th><a href="#install">In your browser or as an app</a></th>'
+            f'<th><a href="#download">Download for your computer</a></th></tr></thead><tbody>{body}</tbody></table></div>'
+            f'<p class="ar-vt-note">Measured with three files at once on a modest 2-core machine; faster computers finish sooner. '
+            f'<a href="{GUIDE_URL}#data-size-and-speed" target="_blank" rel="noopener">Full measurements</a>.</p></section>')
+
+
+def install_section() -> str:
+    install = [("Add it", "In Chrome or Edge, click the install icon at the right end of the address bar "
+                          "(a screen with a down arrow), or the <b>Install app</b> button at the top of this page."),
+               ("Then", "anyrecon opens in its own window from your Start menu, Dock or desktop, like any other app."),
+               ("Offline", "Once added and opened once, it starts and works with no internet connection."),
+               ("Size", "Same as the web page: it is the web page in its own window, so it handles the same amount of data."),
+               ("Remove", "Open the app, click the ⋮ menu at the top of its window, choose <b>Uninstall</b>.")]
+    inst = "".join(f"<dt>{esc(a)}</dt><dd>{b}</dd>" for a, b in install)
+    return (f'<section class="ar-sec" id="install"><h2>Use it as an app</h2><p>Your browser adds it like an app in two clicks. '
+            f'Nothing to download, no administrator rights needed.</p><dl class="ar-dl">{inst}</dl></section>')
 
 
 def download_section() -> str:
-    """'Run it on your computer': the Desktop edition, one tab per OS. CSS-only tabs (radio inputs);
+    """'Download for your computer': the download version, one tab per OS. CSS-only tabs (radio inputs);
     boot.js pre-selects the visitor's OS."""
     trouble = f'<a href="{GUIDE_URL}#run-it-on-your-computer" target="_blank" rel="noopener">Help and troubleshooting</a>'
     oses = [
@@ -258,29 +307,33 @@ def download_section() -> str:
         f'<div class="ar-os-panel p-{k}"><a class="ar-btn primary" href="{DOWNLOAD_URL}">Download for {n}</a>'
         f'<span class="ar-os-size">ZIP, about 1 MB</span><ol>' + "".join(f"<li>{s}</li>" for s in steps) + "</ol></div>"
         for k, n, _, steps in oses)
-    return (f'<section class="ar-sec" id="download"><h2>Run it on your computer</h2>'
-            f'<p>For large files, scanned documents or working offline. Same tool, same results, and your files stay on your computer.</p>'
+    return (f'<section class="ar-sec" id="download"><h2>Download for your computer</h2>'
+            f'<p>For large files: it uses your computer\'s full memory instead of the browser\'s. Also reads scanned documents. '
+            f'Same tool, same results, and your files stay on your computer.</p>'
             f'<div class="ar-os">{radios}<div class="ar-os-tabs">{tabs}</div><div class="ar-os-panels">{panels}</div>'
             f'<div class="ar-os-note">Installs only inside its own folder: delete the folder to remove it. The first run downloads its '
-            f'components from pypi.org; after that it works offline. Can\'t install anything? This page needs nothing installed. {trouble}.</div>'
+            f'components from pypi.org; after that it works offline. Can\'t install anything? The browser version needs nothing installed. {trouble}.</div>'
             f'</div></section>')
 
 
-def footer(version: str, edition: str) -> str:
-    return (f'<footer class="ar-foot"><span>anyrecon {esc(version)} · {esc(edition)} edition</span>'
+def footer(version: str, released: str = "") -> str:
+    from datetime import date
+    when = f" · updated {date.fromisoformat(released):%-d %b %Y}" if released else ""
+    return (f'<footer class="ar-foot"><span>anyrecon {esc(version)}{when} · '
+            f'<a href="{CHANGELOG_URL}" target="_blank" rel="noopener">What\'s new</a></span>'
             f'<span>A project by <a href="{AUTHOR_URL}" target="_blank" rel="noopener">Kemdi Okoli</a> · '
             f'<a href="{GUIDE_URL}" target="_blank" rel="noopener">Guide</a> · '
             f'<a href="{REPO}" target="_blank" rel="noopener">Source on GitHub</a></span></footer>')
 
 
-def landing_page(edition: str, version: str, browser: bool) -> str:
-    """The whole landing page as static HTML (Browser edition shows it before Python has started)."""
+def landing_page(version: str, released: str = "") -> str:
+    """The whole landing page as static HTML, shown before Python has started."""
     status = ('<span class="ar-status" id="arStatus"><i></i><em>Preparing engine</em></span>'
-              '<a class="opt" href="#download">Download</a>')
+              '<button class="ar-install" id="arInstall" hidden>Install app</button>')
     actions = ('<div class="ar-actions"><button class="ar-btn primary" data-go="start">Start reconciling</button>'
                f'<a class="ar-btn" href="{GUIDE_URL}" target="_blank" rel="noopener">How it works and handles data</a></div>')
     return (f'<div class="ar-wrap">{nav(status)}<div class="ar-hero"><h1>{HERO_TITLE}</h1><p>{HERO_TEXT}</p>{actions}'
-            f'{facts(edition)}</div>{home_sections(edition, browser)}{footer(version, edition)}</div>')
+            f'{facts()}</div>{home_sections()}{footer(version, released)}</div>')
 
 
 def steps_bar(active: int) -> str:

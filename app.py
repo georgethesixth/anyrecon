@@ -1,20 +1,20 @@
-"""anyrecon web UI.   Run locally:  streamlit run app.py
+"""anyrecon app. Runs inside the visitor's browser (Pyodide + stlite; built by browser/build.py).
+For development you can also run it locally:  streamlit run app.py
 
-Files are held in memory for the session only; nothing is written to disk except a temporary
-copy during parsing, deleted immediately. See docs/GUIDE.md for the full data-handling model.
+Files are held in memory for the session only. Parsing uses a temporary copy that is deleted immediately
+(in the browser it lives in Pyodide's in-memory file system). See docs/GUIDE.md for the data-handling model.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
-import io
 import json
-import os
 import sys
 import tempfile
 from itertools import combinations
 from pathlib import Path
 
-if sys.platform == "emscripten":   # Browser edition: pure-Python wheels bundled without their unused native deps
+if sys.platform == "emscripten":   # Web app: pure-Python wheels bundled without their unused native deps
     for _w in sorted(Path("wheels").glob("*.whl")):
         if str(_w.resolve()) not in sys.path:
             sys.path.insert(0, str(_w.resolve()))
@@ -22,7 +22,7 @@ if sys.platform == "emscripten":   # Browser edition: pure-Python wheels bundled
 import pandas as pd
 import streamlit as st
 
-from anyrecon import __version__, llm
+from anyrecon import __released__, __version__
 from anyrecon import templates as tpl
 from anyrecon.chain import auto_config, auto_pairs, run_all
 from anyrecon.discover import discover
@@ -34,17 +34,14 @@ from anyrecon.report import audit_json, write_excel
 
 import ui_theme as ui
 
-BROWSER = sys.platform == "emscripten"
-EDITION = "Browser" if BROWSER else os.environ.get("ANYRECON_EDITION", "Desktop").title()
-WHERE = {"Browser": "Runs inside this browser tab. Files are never uploaded.",
-         "Desktop": "Runs on this computer only.",
-         "Server": "Hosted by your organisation."}.get(EDITION, "")
+BROWSER = sys.platform == "emscripten"   # in the browser (web page or installed app)
+DOWNLOAD = not BROWSER                   # the download version: run on the user's computer by the start files
 
 st.set_page_config(page_title="anyrecon", page_icon="◯", layout="wide", initial_sidebar_state="collapsed")
-st.markdown(ui.css(EDITION), unsafe_allow_html=True)
+st.markdown(ui.css(DOWNLOAD), unsafe_allow_html=True)
 
 ss = st.session_state
-# Browser edition: the page already showed the landing (static HTML) while Python loaded, so open on the work view.
+# In the browser the page already showed the landing (static HTML) while Python loaded, so open on the work view.
 ss.setdefault("view", "work" if BROWSER else "home")
 ss.setdefault("datasets", {})
 ss.setdefault("uploads", {})       # name -> (filename, bytes): held in memory only, never written to disk
@@ -81,15 +78,15 @@ def _clear():
 
 # ---------------------------------------------------------------- landing
 if ss.view == "home":
-    st.markdown(ui.home_top(WHERE), unsafe_allow_html=True)
+    st.markdown(ui.home_top(), unsafe_allow_html=True)
     with st.container(key="home_actions"):
         c1, c2 = st.columns(2)
         if c1.button("Start reconciling", type="primary", key="start"):
             ss.view = "work"; st.rerun()
         c2.link_button("How it works and handles data", ui.GUIDE_URL)
-    st.markdown(ui.home_where(WHERE, EDITION), unsafe_allow_html=True)
-    st.markdown(ui.home_sections(EDITION, BROWSER), unsafe_allow_html=True)
-    st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+    st.markdown(ui.facts(DOWNLOAD), unsafe_allow_html=True)
+    st.markdown(ui.home_sections(DOWNLOAD), unsafe_allow_html=True)
+    st.markdown(ui.footer(__version__, __released__), unsafe_allow_html=True)
     st.stop()
 
 def _rule_line(cfg):
@@ -121,10 +118,10 @@ ADV = ss.advanced
 
 if ADV:
     st.markdown(ui.step_head(1, "Documents"), unsafe_allow_html=True)
-types = ["csv", "tsv", "txt", "xlsx", "xlsm", "xls", "json", "pdf"] + ([] if BROWSER else ["png", "jpg", "jpeg", "tif", "tiff"])
-ups = st.file_uploader("Add your files: two or more. CSV, Excel, JSON or PDF" + ("" if BROWSER else ", or scans") + ".",
+types = ["csv", "tsv", "txt", "xlsx", "xlsm", "xls", "json", "pdf"] + (["png", "jpg", "jpeg", "tif", "tiff"] if DOWNLOAD else [])
+ups = st.file_uploader("Add your files: two or more. CSV, Excel, JSON or PDF" + (", or scans." if DOWNLOAD else "."),
                        accept_multiple_files=True, type=types,
-                       help="Scanned documents need the Desktop or Server edition." if BROWSER else None)
+                       help=None if DOWNLOAD else "Scanned documents need the download version: use a digital export, or see Download for your computer.")
 ss.uploads = {Path(u.name).stem.replace(" ", "_")[:24]: (u.name, u.getvalue()) for u in ups} if ups else {}
 
 if ADV:
@@ -135,12 +132,10 @@ if ADV:
                           "card-number-shaped references. block: refuse files that contain card data.")
         s2.number_input("Date window (days)", 0, 30, key="window")
         s3.number_input("Amount tolerance", 0.0, 1000.0, step=0.01, key="tol")
-        if not BROWSER:
-            st.caption("AI commentary: " + ("on" if llm.available() else "off"))
 pci_mode, window, tol = ss.pci_mode, ss.window, ss.tol
 
 if not ss.uploads:
-    st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+    st.markdown(ui.footer(__version__, __released__), unsafe_allow_html=True)
     st.stop()
 
 datasets = {}
@@ -237,12 +232,22 @@ for name, ds in datasets.items():
 
 if len(datasets) < 2:
     st.markdown('<p class="ar-note">Add at least one more file to reconcile.</p>', unsafe_allow_html=True)
-    st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+    st.markdown(ui.footer(__version__, __released__), unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------------------------------------------- pairs and rules
 names = list(ss.datasets)
 cache = ss.setdefault("cands", {})
+
+
+def cfg_for(a, b, cands):
+    """auto_config() profiles every column of both files: cache it per pair (a fresh copy each time, since
+    callers adjust it)."""
+    k = (a, b, ss.datasets[a].file_sha256, ss.datasets[b].file_sha256, len(ss.datasets[a]), len(ss.datasets[b]), window)
+    store = ss.setdefault("cfg_cache", {})
+    if k not in store:
+        store[k] = auto_config(ss.datasets[a], ss.datasets[b], date_window_days=window, candidates=cands)[0]
+    return copy.deepcopy(store[k])
 
 
 def cands_for(a, b):
@@ -264,7 +269,7 @@ if not ADV:
     def _build(conn):
         a, b = _okey(conn["a"], conn["b"])
         L, R, c = ss.datasets[a], ss.datasets[b], cmap[_okey(conn["a"], conn["b"])]
-        cfg = auto_config(L, R, date_window_days=window, candidates=c)[0]
+        cfg = cfg_for(a, b, c)
         cfg.amount_tol = tol
         cand = None
         if conn["ci"] is not None and conn["ci"] < len(c):
@@ -349,7 +354,7 @@ if not ADV:
                 ss.confirmed = csig; ss.editing = None; st.rerun()
 
     if not confirmed:
-        st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+        st.markdown(ui.footer(__version__, __released__), unsafe_allow_html=True)
         st.stop()
     seen = set()
     for a, b, cfg, cand in built:
@@ -377,7 +382,7 @@ else:
             l, r = pr.split(" ⟷ ")
             L, R = ss.datasets[l], ss.datasets[r]
             cands = cmap.get((l, r)) or cands_for(l, r)
-            base_cfg = auto_config(L, R, date_window_days=window, candidates=cands)[0]
+            base_cfg = cfg_for(l, r, cands)
             st.markdown(ui.pair_head(l, r), unsafe_allow_html=True)
             if not cands:
                 st.error("No shared identifier or amount/date pattern found.")
@@ -414,7 +419,7 @@ else:
             configs.append(cfg)
 
 if not configs:
-    st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+    st.markdown(ui.footer(__version__, __released__), unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------------------------------------------- run (automatic; re-runs only when something changed)
@@ -436,14 +441,21 @@ tot_x = sum(len(r.exceptions) for r in results.values())
 h1, h2 = st.columns([3, 2], vertical_alignment="bottom")
 h1.markdown(f'<div class="ar-results"><h2>Results</h2><p>{len(results)} pair{"s" if len(results) != 1 else ""} · '
             f'{tot_m:,} matched · {tot_x:,} exception{"s" if tot_x != 1 else ""}</p></div>', unsafe_allow_html=True)
-buf = io.BytesIO()
-with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as fh:
-    write_excel(fh.name, ss.datasets, results, chain)
-    buf.write(Path(fh.name).read_bytes())
-Path(fh.name).unlink(missing_ok=True)
+# Build the report and audit file once per run (not on every screen refresh: at 100k+ rows that takes seconds).
+if ss.get("report_sig") != ss.run_sig:
+    with st.spinner("Preparing the Excel report…"):
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as fh:
+            pass
+        try:
+            write_excel(fh.name, ss.datasets, results, chain)
+            ss.report_xlsx = Path(fh.name).read_bytes()
+        finally:
+            Path(fh.name).unlink(missing_ok=True)
+        ss.report_audit = json.dumps(audit_json(ss.datasets, results), indent=2, default=str)
+    ss.report_sig = ss.run_sig
 with h2.container(key="downloads", horizontal=True, horizontal_alignment="right"):
-    st.download_button("Excel report", buf.getvalue(), "recon_report.xlsx", type="primary")
-    st.download_button("Audit trail", json.dumps(audit_json(ss.datasets, results), indent=2, default=str), "recon_audit.json")
+    st.download_button("Excel report", ss.report_xlsx, "recon_report.xlsx", type="primary")
+    st.download_button("Audit trail", ss.report_audit, "recon_audit.json")
     if ADV:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as fh:
             pass
@@ -483,7 +495,5 @@ if chain is not None:
                     unsafe_allow_html=True)
         st.bar_chart(chain.status.value_counts(), color=ui.ACCENT, height=220)
         st.dataframe(chain, width="stretch", hide_index=True, height=360)
-if llm.available() and st.button("Explain these results (AI)"):
-    st.write(llm.explain(results))
 
-st.markdown(ui.footer(__version__, EDITION), unsafe_allow_html=True)
+st.markdown(ui.footer(__version__, __released__), unsafe_allow_html=True)

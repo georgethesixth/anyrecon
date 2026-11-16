@@ -25,6 +25,7 @@ for _name in ("pdfminer", "pdfplumber", "PIL", "fontTools"):
 from .models import OCR_CONF, ROWID, Dataset, norm_name
 
 TOTAL_RE = re.compile(r"^(grand\s*)?(sub\s*-?\s*)?totals?\b|^(opening|closing)\s+balance|balance\s+(b/?f|c/?f|brought|carried)|^brought forward|^carried forward", re.I)
+TOTAL_RE_NC = re.compile(TOTAL_RE.pattern.replace("(", "(?:"), re.I)   # same, without capture groups (for pandas)
 DATE_LIKE = re.compile(r"^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}")
 NUM_LIKE = re.compile(r"^[\s(+-]*[₦$€£]?\s*[\d,]+(\.\d+)?\)?\s*(cr|dr)?$", re.I)
 
@@ -319,9 +320,14 @@ def _is_labelish(v: str) -> bool:
     return bool(re.search(r"[A-Za-z]", v)) and len(v) <= 40 and not DATE_LIKE.match(v) and not NUM_LIKE.match(v)
 
 
+def _clean_column(col: pd.Series) -> pd.Series:
+    s = col.astype("string").str.strip()
+    return s.astype(object).where(s.notna() & (s != ""), None)
+
+
 def frame_from_raw(raw: pd.DataFrame, notes: list[str], merge_continuations: bool = False,
                    warnings: list[str] | None = None) -> pd.DataFrame:
-    raw = raw.map(lambda v: None if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == "" else str(v).strip())
+    raw = raw.apply(_clean_column)   # column-wise: strings stripped, blanks -> None
     raw = raw.dropna(how="all").dropna(axis=1, how="all")
     if raw.empty:
         return pd.DataFrame()
@@ -354,12 +360,16 @@ def frame_from_raw(raw: pd.DataFrame, notes: list[str], merge_continuations: boo
         names.append(n)
     body = raw.iloc[best_i + 1:].copy()
     body.columns = names
-    # repeated headers (multi-page PDFs)
-    rep = body.apply(lambda r: sum(1 for a, b in zip(r.tolist(), header_vals) if isinstance(a, str) and a == b) >= max(2, len([h for h in header_vals if h]) // 2), axis=1)
+    # repeated headers (multi-page PDFs): rows where at least half the header labels reappear in place
+    labelled = [(c, h) for c, h in zip(body.columns, header_vals) if h]
+    same = sum((body[c] == h).fillna(False).astype(int) for c, h in labelled) if labelled else pd.Series(0, index=body.index)
+    rep = same >= max(2, len(labelled) // 2)
     if rep.any():
         notes.append(f"Removed {int(rep.sum())} repeated header row(s).")
         body = body[~rep]
-    tot = body.apply(lambda r: any(isinstance(v, str) and TOTAL_RE.search(v) for v in r.tolist()), axis=1)
+    tot = pd.Series(False, index=body.index)
+    for c in body.columns:
+        tot |= body[c].astype("string").str.contains(TOTAL_RE_NC, na=False).astype(bool)
     if tot.any():
         notes.append(f"Removed {int(tot.sum())} total / balance row(s).")
         body = body[~tot]

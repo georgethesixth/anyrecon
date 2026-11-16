@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: data: 'wasm-unsafe-eval' 'unsafe-eval'; worker-src 'self' blob: data:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="anyrecon versions and what changed in each.">
+<title>anyrecon · What's new</title>
+<link rel="icon" href="./favicon-32.png" type="image/png">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./guide.css">
+</head>
+<body>
+<div class="ar-wrap"><nav class="ar-nav"><a class="ar-logo" href="./"><b>ar</b>anyrecon</a><div class="ar-navlinks"><a href="./">Open anyrecon</a><a href="./guide.html">Guide</a><a href="./changelog.html">What's new</a><a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">GitHub</a></div></nav></div>
+<main class="g-body"><h1 id="whats-new-in-anyrecon">What's new in anyrecon</h1>
+<table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Latest</th>
+<th>Updated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Web app</strong> (anyrecon.vercel.app, also installable as an app)</td>
+<td>0.3.0</td>
+<td>16 Nov 2026</td>
+</tr>
+<tr>
+<td><strong>Download version</strong> (Windows, Mac, Linux)</td>
+<td>0.3.0</td>
+<td>16 Nov 2026</td>
+</tr>
+</tbody>
+</table>
+<p>Both versions run the same engine and give the same results. The web app updates itself; for the download
+version, download the new ZIP. Dates are when a change went live.</p>
+<h2 id="030-16-nov-2026">0.3.0 · 16 Nov 2026</h2>
+<p><strong>Web app</strong></p>
+<ul>
+<li><strong>Add it as an app</strong> from Chrome or Edge: the install icon at the right of the address bar, or the
+  <strong>Install app</strong> button. It opens in its own window and, once opened, works with no internet connection.</li>
+<li><strong>Which version?</strong> table on the home page, with the data size each version handles comfortably, measured.</li>
+<li>This changelog, linked from every page.</li>
+</ul>
+<p><strong>Engine (both versions)</strong></p>
+<ul>
+<li><strong>More than twice as fast on large files, using less than half the memory</strong> (100,000 rows per file: 109 s and
+  1.5 GB before, 48 s and 0.6 GB after, same results). File cleanup, the card-number check, the search for references in
+  narrations and the Excel report were reworked. Near-miss suggestions no longer slow down as files grow.</li>
+<li>The Excel report is built once per run (it was rebuilt on every screen refresh). Tables longer than Excel's
+  1,048,576-row limit continue on extra sheets.</li>
+</ul>
+<p><strong>Removed</strong></p>
+<ul>
+<li>The Server (Docker) edition.</li>
+<li>Optional AI commentary from the app (the command line keeps it).</li>
+</ul>
+<h2 id="021-15-nov-2026">0.2.1 · 15 Nov 2026</h2>
+<p><strong>Web app</strong></p>
+<ul>
+<li>The file picker says <strong>Choose files</strong> and explains that files open in the tab and are never uploaded.</li>
+<li>Sample data removed: the tool works on your own files.</li>
+<li>Full technical guide at <a href="guide.html">/guide.html</a>.</li>
+<li>The parts of the screen the app needs are fetched in the background, with retries; if one still fails to load,
+  a plain notice offers <strong>Reload</strong> instead of error boxes.</li>
+</ul>
+<p><strong>Download version</strong></p>
+<ul>
+<li><strong>Download for your computer</strong> section on the home page, with steps for Windows, Mac and Linux.</li>
+<li>Start files sit at the top of the download, with a <code>START HERE.txt</code>.</li>
+<li>Checks for a working Python 3.10 or newer (including the Windows Store and Mac placeholders that look like
+  Python but don't run), resumes an interrupted first-run setup, and explains each problem in plain words.</li>
+<li>The download is about 1 MB.</li>
+</ul>
+<h2 id="020-15-nov-2026">0.2.0 · 15 Nov 2026</h2>
+<p><strong>Web app and download version</strong></p>
+<ul>
+<li><strong>Simple by default:</strong> add files, check the proposed connections, confirm, see results. Pairs, matching rules
+  and fees are worked out automatically; every manual choice is under <strong>Advanced</strong>.</li>
+<li><strong>Connection preview</strong>, in the style of Power BI's merge preview: a diagram of how the files link, how many rows
+  each connection matches on both sides, and real example values. Confirm, change or remove each one.</li>
+<li>A card per file with row and column counts, the detected amount and date columns, card-data actions, and a
+  preview of the first rows.</li>
+<li>The home page shows instantly; the engine loads in the background.</li>
+<li>A plain, practical look.</li>
+</ul>
+<p><strong>Engine</strong></p>
+<ul>
+<li>Chooses which files to compare: the strongest links that connect every file once.</li>
+<li>Detects a consistent percentage fee (for example MDR) and applies it, keeping the result only if more matches.</li>
+</ul>
+<h2 id="010-15-nov-2026">0.1.0 · 15 Nov 2026</h2>
+<p>First release.</p>
+<ul>
+<li><strong>Engine:</strong> reads CSV, Excel (several sheets), JSON, PDF statements and scans; masks card numbers and removes
+  security codes and PIN data on load; finds the identifiers that link two files, including references buried
+  in bank narrations; matches in tiers with fixed rules; traces transactions across three or more files; Excel
+  report, audit trail and reusable setups.</li>
+<li><strong>Editions:</strong> in the browser (anyrecon.vercel.app), on your computer (Windows, Mac, Linux), and a Server edition
+  for organisations.</li>
+<li><strong>Command line</strong> for scripted runs.</li>
+</ul>
+<p class="g-edit">This page is generated from <a href="https://github.com/georgethesixth/anyrecon/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.
+Found something wrong or out of date? <a href="https://github.com/georgethesixth/anyrecon/edit/main/CHANGELOG.md" target="_blank" rel="noopener">Edit it on GitHub</a>.</p>
+</main>
+<div class="ar-wrap"><footer class="ar-foot"><span>anyrecon 0.3.0 · updated 16 Nov 2026 · <a href="https://anyrecon.vercel.app/changelog.html" target="_blank" rel="noopener">What's new</a></span><span>A project by <a href="https://kemdi.co" target="_blank" rel="noopener">Kemdi Okoli</a> · <a href="https://anyrecon.vercel.app/guide.html" target="_blank" rel="noopener">Guide</a> · <a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">Source on GitHub</a></span></footer></div>
+</body>
+</html>

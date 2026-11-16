@@ -6,55 +6,55 @@ const options = {
  "entrypoint": "app.py",
  "files": {
   "anyrecon/__init__.py": {
-   "url": "./app/anyrecon/__init__.py"
+   "url": "./app/382dc0006c6a/anyrecon/__init__.py"
   },
   "anyrecon/__main__.py": {
-   "url": "./app/anyrecon/__main__.py"
+   "url": "./app/382dc0006c6a/anyrecon/__main__.py"
   },
   "anyrecon/chain.py": {
-   "url": "./app/anyrecon/chain.py"
+   "url": "./app/382dc0006c6a/anyrecon/chain.py"
   },
   "anyrecon/cli.py": {
-   "url": "./app/anyrecon/cli.py"
+   "url": "./app/382dc0006c6a/anyrecon/cli.py"
   },
   "anyrecon/discover.py": {
-   "url": "./app/anyrecon/discover.py"
+   "url": "./app/382dc0006c6a/anyrecon/discover.py"
   },
   "anyrecon/fuzzy.py": {
-   "url": "./app/anyrecon/fuzzy.py"
+   "url": "./app/382dc0006c6a/anyrecon/fuzzy.py"
   },
   "anyrecon/ingest.py": {
-   "url": "./app/anyrecon/ingest.py"
+   "url": "./app/382dc0006c6a/anyrecon/ingest.py"
   },
   "anyrecon/llm.py": {
-   "url": "./app/anyrecon/llm.py"
+   "url": "./app/382dc0006c6a/anyrecon/llm.py"
   },
   "anyrecon/match.py": {
-   "url": "./app/anyrecon/match.py"
+   "url": "./app/382dc0006c6a/anyrecon/match.py"
   },
   "anyrecon/models.py": {
-   "url": "./app/anyrecon/models.py"
+   "url": "./app/382dc0006c6a/anyrecon/models.py"
   },
   "anyrecon/pci.py": {
-   "url": "./app/anyrecon/pci.py"
+   "url": "./app/382dc0006c6a/anyrecon/pci.py"
   },
   "anyrecon/profile.py": {
-   "url": "./app/anyrecon/profile.py"
+   "url": "./app/382dc0006c6a/anyrecon/profile.py"
   },
   "anyrecon/report.py": {
-   "url": "./app/anyrecon/report.py"
+   "url": "./app/382dc0006c6a/anyrecon/report.py"
   },
   "anyrecon/templates.py": {
-   "url": "./app/anyrecon/templates.py"
+   "url": "./app/382dc0006c6a/anyrecon/templates.py"
   },
   "app.py": {
-   "url": "./app/app.py"
+   "url": "./app/382dc0006c6a/app.py"
   },
   "ui_theme.py": {
-   "url": "./app/ui_theme.py"
+   "url": "./app/382dc0006c6a/ui_theme.py"
   },
   "wheels/pdfplumber-0.11.10-py3-none-any.whl": {
-   "url": "./app/wheels/pdfplumber-0.11.10-py3-none-any.whl"
+   "url": "./app/382dc0006c6a/wheels/pdfplumber-0.11.10-py3-none-any.whl"
   }
  },
  "pyodideUrl": "./pyodide/pyodide.mjs",
@@ -63,7 +63,8 @@ const options = {
   "./wheels/itsdangerous-2.2.0-py3-none-any.whl",
   "./wheels/openpyxl-3.1.5-py2.py3-none-any.whl",
   "./wheels/pdfminer_six-20260107-py3-none-any.whl",
-  "./wheels/python_multipart-0.0.33-py3-none-any.whl"
+  "./wheels/python_multipart-0.0.34-py3-none-any.whl",
+  "./wheels/xlsxwriter-3.3.1-py3-none-any.whl"
  ],
  "wheelUrls": {
   "streamlit": "./stlite/wheels/streamlit-1.65.0-cp314-none-any.whl",
@@ -131,5 +132,23 @@ const options = {
     bar.querySelector("button").onclick = () => location.reload();
     document.body.appendChild(bar);
   }).observe(root, { childList: true, subtree: true });
+})();
+
+(() => {
+  const btn = document.getElementById("arInstall");
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  if (standalone) { const s = document.getElementById("install"); if (s) s.hidden = true; }
+  if ("serviceWorker" in navigator) {
+    addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  }
+  let deferred = null;
+  addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferred = e; if (btn) btn.hidden = false; });
+  addEventListener("appinstalled", () => { deferred = null; if (btn) btn.hidden = true; });
+  if (btn) btn.addEventListener("click", async () => {
+    if (!deferred) return;
+    deferred.prompt();
+    try { await deferred.userChoice; } catch (e) {}
+    deferred = null; btn.hidden = true;
+  });
 })();
 mount(abs(options), document.getElementById("root"));

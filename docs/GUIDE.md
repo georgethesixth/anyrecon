@@ -18,19 +18,21 @@ this guide summarises it.
 4. [Card data (PCI DSS)](#card-data-pci-dss)
 5. [The pipeline, step by step](#the-pipeline-step-by-step)
 6. [The app](#the-app)
-7. [The three editions](#the-three-editions)
-8. [Run it on your computer](#run-it-on-your-computer)
-9. [Outputs](#outputs)
-10. [Command line](#command-line)
-11. [Configuration](#configuration)
-12. [Working on the code](#working-on-the-code)
-13. [Known limitations](#known-limitations)
-14. [Glossary](#glossary)
+7. [The two versions](#the-two-versions)
+8. [Data size and speed](#data-size-and-speed)
+9. [Use it as an app](#use-it-as-an-app)
+10. [Download for your computer](#download-for-your-computer)
+11. [Outputs](#outputs)
+12. [Command line](#command-line)
+13. [Configuration](#configuration)
+14. [Working on the code](#working-on-the-code)
+15. [Known limitations](#known-limitations)
+16. [Glossary](#glossary)
 
 ## What it does
 
 You give anyrecon two or more files that should agree with each other: a processor export, a general ledger, a
-bank statement, a settlement report. They can be CSV, Excel, JSON, PDF or (in the Desktop and Server editions)
+bank statement, a settlement report. They can be CSV, Excel, JSON, PDF or (in the download version)
 scanned images. anyrecon:
 
 1. **Reads** each file into a clean table, whatever its layout.
@@ -63,44 +65,43 @@ This section answers: where does a file go, what is kept, and what could leave t
 
 ### "Choose files" is not an upload
 
-In the Browser edition, picking or dragging in a file lets the page *open* it, the way a desktop program opens a
-file from your disk. The file is read into memory inside the tab and processed there; it is never sent anywhere.
-Quick proof: wait for **Ready** in the top bar, switch off your internet connection, and reconcile. It still works.
-The picker says so in each edition (Streamlit's default "Upload" label is replaced in `ui_theme.css()`).
+In the web app, picking or dragging in a file lets the page *open* it, the way a desktop program opens a file from
+your disk. The file is read into memory inside the tab and processed there; it is never sent anywhere. Quick
+proof: wait for **Ready** in the top bar, switch off your internet connection, and reconcile. It still works. The
+download version does the same on your own computer. The picker says so (Streamlit's default "Upload" label is
+replaced in `ui_theme.css()`).
 
 ### The lifecycle of a file
 
 | Stage | What happens | Where the data is |
 |---|---|---|
-| 1. You pick files | The browser reads them. | In the page (Browser edition) or sent to the anyrecon process (Desktop: your own computer; Server: your organisation's server). |
+| 1. You pick files | The browser reads them. | Web app: inside the page. Download version: handed to anyrecon running on the same computer. |
 | 2. Held for the session | The raw bytes are kept in the session's memory (`st.session_state.uploads`). | Memory only. |
-| 3. Parsing | Each file is written to a **temporary file** so the parsing libraries can open it, parsed, and the temporary file is **deleted immediately** (`app._from_bytes`, `finally: tmp.unlink()`). | Browser: Pyodide's in-memory file system, never your disk. Desktop/Server: the operating system's temp folder for a fraction of a second. |
+| 3. Parsing | Each file is written to a **temporary file** so the parsing libraries can open it, parsed, and the temporary file is **deleted immediately** (`app._from_bytes`, `finally: tmp.unlink()`). | Web app: Pyodide's in-memory file system, never your disk. Download version: the operating system's temp folder for a fraction of a second. |
 | 4. Card-data guard | Card numbers masked, security codes and PIN data removed (see next section). | Memory. |
 | 5. Matching and results | Parsed tables, proposals and results are cached in the session so changing a setting doesn't re-read every file. | Memory. |
-| 6. Downloads | The Excel report is built in a temporary file, read into memory, the file deleted, then offered as a download. | Generated in memory; saved only where *you* save it. |
-| 7. End of session | **Clear all** deletes everything immediately. Closing the tab ends the session; Desktop/Server drop it shortly after (Streamlit's disconnected-session timeout). | Gone. |
+| 6. Downloads | The Excel report is built once per run, in memory, and offered as a download. | Saved only where *you* save it. |
+| 7. End of session | **Clear all** deletes everything immediately. Closing the tab ends the session; the download version drops it shortly after (Streamlit's disconnected-session timeout). | Gone. |
 
-**Not kept anywhere:** no database, no data logs, no analytics, no caches on disk. The Server edition runs with
-a read-only file system, so it physically can't write data to disk.
+**Not kept anywhere:** no database, no data logs, no analytics, no caches of your data on disk. The web app's
+offline copy (see [Use it as an app](#use-it-as-an-app)) holds only the app's own files, never yours.
 
-**One caveat to be precise about:** in the Desktop and Server editions, if the process is killed in the split
-second between writing a temporary file and deleting it, that file stays in the temp folder until the OS cleans
-it. The file holds the original upload, before masking.
+**One caveat to be precise about:** in the download version, if the program is killed in the split second
+between writing a temporary file and deleting it, that file stays in the temp folder until the OS cleans it. The
+file holds the original, before masking.
 
 ### What can leave the machine
 
-| Edition | Network traffic | Your files |
+| Version | Network traffic | Your files |
 |---|---|---|
-| **Browser** | The page downloads its own code (Python runtime, engine, UI) from the site that served it. Nothing else. | **Never sent anywhere.** The page's security policy (`Content-Security-Policy: connect-src 'self'`) stops it from sending data to any other site, and the site has no endpoint that accepts uploads. |
-| **Desktop** | First run downloads Python packages from PyPI. After that, none. The app listens on `127.0.0.1` only, so other computers can't reach it. Streamlit usage statistics are switched off. | Stay on your computer. |
-| **Server** | Whatever your organisation allows. No outbound calls unless AI commentary is switched on. | Stay on your organisation's server. |
-| **Any, with AI commentary on** (Desktop/Server, off by default) | One request to the AI provider per explanation. | Only summary figures, match rules and column names are sent. Row values are sent **only** if you also opt in to sharing samples (CLI `--share-samples`), and then at most 15 exception rows, already masked. |
+| **Web app** (in a tab or added as an app) | The page downloads its own code (Python runtime, engine, UI) from the site that served it, and checks for an updated version when online. Nothing else. | **Never sent anywhere.** The page's security policy (`Content-Security-Policy: connect-src 'self'`) stops it from sending data to any other site, and the site has no endpoint that accepts uploads. |
+| **Download version** | First run downloads Python packages from PyPI. After that, none. The app listens on `127.0.0.1` only, so other computers can't reach it. Streamlit usage statistics are switched off. | Stay on your computer. |
+| **Command line, with AI commentary** (`--explain`, off by default) | One request to the AI provider per explanation. | Only summary figures, match rules and column names. Row values only with `--share-samples`, then at most 15 exception rows, already masked. |
 
-The public site at anyrecon.vercel.app is the Browser edition. Vercel, like any web host, logs that a visit
-happened (time, address, which file was requested). Your files are not part of any request, so they are not in
-those logs.
+The public site at anyrecon.vercel.app is the web app. Vercel, like any web host, logs that a visit happened
+(time, address, which file was requested). Your files are not part of any request, so they are not in those logs.
 
-### How the Browser edition is locked down
+### How the web app is locked down
 
 - **Everything is served from the same site.** The Python runtime (Pyodide), the UI framework (stlite/Streamlit)
   and every Python package are copied into the site at build time. No CDNs, no package downloads at runtime. This
@@ -149,14 +150,14 @@ Change it under **Advanced → Settings → Card data**, or with `--pci` on the 
 ### Tokens
 
 Tokens are keyed with a random secret generated when the program starts, so they only match within one run.
-Set `ANYRECON_PAN_KEY` (Server edition: in your secrets manager) for tokens that stay the same across runs.
+Set `ANYRECON_PAN_KEY` (download version and command line) for tokens that stay the same across runs.
 
 ### Who is responsible for what
 
 See [PCI_DSS.md](https://github.com/georgethesixth/anyrecon/blob/main/docs/PCI_DSS.md) for the full scenario
 table. In short: the guard makes sure the tool's *outputs* never contain full card numbers or security data,
-but the *input* files you load are your organisation's responsibility. Run the Desktop or Server edition inside
-your card-data environment, or use the Browser edition, which never sends the files anywhere.
+but the *input* files you load are your organisation's responsibility. Run the download version on a computer inside
+your card-data environment, or use the web app, which never sends the files anywhere.
 
 ## The pipeline, step by step
 
@@ -205,7 +206,7 @@ original file.
 | Separate Debit and Credit columns | Combined into `Amount (Dr/Cr)` plus `Direction` (DR/CR). |
 
 Errors a user can act on are raised as `UnreadableFile` with a plain explanation (encrypted file, no table
-found, scanned document in the Browser edition).
+found, scanned document in the web app).
 
 ### 2. Profile: `anyrecon/profile.py`
 
@@ -361,8 +362,8 @@ See [Outputs](#outputs).
 
 ### Flow
 
-1. **Landing page.** In the Browser edition this is plain HTML in `index.html`, shown instantly while the
-   engine loads behind it (see [Browser edition](#browser)).
+1. **Landing page.** In the web app this is plain HTML in `index.html`, shown instantly while the
+   engine loads behind it (see [Web app](#browser)).
 2. **Add files.** One upload box; files are named after their file name.
 3. **Your files.** A card per file: format, rows, columns, detected amount and date columns, card-data actions,
    and a **Preview** of the first 20 rows (already masked). Anything needing a decision (a suspected security-code
@@ -390,22 +391,29 @@ tolerance; sheet handling for multi-sheet workbooks; per-file previews and colum
 each pair in priority order; amount and date columns; expected fee (0 means detect automatically); percentage
 tolerance; the amount + date fallback; and saving or loading a setup file.
 
-## The three editions
+## The two versions
 
-All three run the same engine and app and give the same results.
+Both run the same engine and the same app, and give the same results. The difference is where they run, and so
+how much data they handle comfortably (measured in the next section).
 
-| | Browser | Desktop | Server |
-|---|---|---|---|
-| Runs | In the browser tab (Pyodide: Python compiled to WebAssembly) | On your computer (Python + Streamlit) | In a Docker container |
-| Install | None | Python, once; the launcher does the rest | Docker |
-| Scans / OCR | No (Tesseract can't run in a browser) | Yes, with Tesseract installed | Yes, included |
-| AI commentary | No | Optional | Optional |
-| Practical size | Tens of thousands of rows per file | Limited by RAM | Limited by RAM; uploads up to 200 MB per file |
+| | Web app | Download version |
+|---|---|---|
+| Runs | In a browser tab, or in its own window once added as an app (Pyodide: Python compiled to WebAssembly) | On your computer (regular Python + Streamlit), opened in your browser |
+| Install | Nothing. Optionally "add as an app" from Chrome or Edge in two clicks | Download a 1 MB ZIP; needs Python 3.10+; the first run sets itself up |
+| Comfortable size | See [Data size and speed](#data-size-and-speed) | See [Data size and speed](#data-size-and-speed) |
+| Works offline | Once added as an app and opened once | After the first run |
+| Scanned documents (OCR) | No: Tesseract can't run in a browser | Yes, with Tesseract installed |
+| Updates | Automatic | Download the new ZIP |
+
+**Why the web app handles less data:** it runs inside the browser's WebAssembly sandbox, which gives a page at
+most 4 GB of memory (in practice Chrome allows less), runs Python on a single thread, and is typically 2–3 times
+slower than native Python. Adding it as an app doesn't change this: the installed app *is* the same page in its own
+window. The download version uses regular Python with all of the computer's memory.
 
 <a id="browser"></a>
-### Browser edition: `editions/browser/`
+### Web app: `browser/`
 
-`build.py` assembles a static site:
+`browser/build.py` assembles a static site in `web/`:
 
 1. Downloads stlite (Streamlit for the browser) from npm at a pinned version, and Pyodide (the Python runtime).
 2. Works out the Python packages the app needs. Pure-Python wheels are bundled and imported straight from the
@@ -418,21 +426,23 @@ All three run the same engine and app and give the same results.
      top bar, carries a click made before it's ready through once it is, and **prefetches the UI pieces** listed
      in `prefetch.txt` in the background (with retries), so nothing has to be downloaded when results appear;
    - a fallback notice with a **Reload** button if a piece still fails to load.
-5. Renders this guide (`docs/GUIDE.md`) to `guide.html`.
+5. Makes it installable (see [Use it as an app](#use-it-as-an-app)): `manifest.webmanifest`, icons from
+   `browser/assets/`, and `sw.js`.
+6. Renders this guide (`docs/GUIDE.md`) to `guide.html` and the changelog (`CHANGELOG.md`) to `changelog.html`.
 
 The site is published by committing the built `web/` folder; Vercel serves it as static files
-(`vercel.json`: no build step, security headers, long cache for the immutable runtime files; `.vercelignore`:
-only `web/` and `vercel.json` are uploaded).
+(`vercel.json`: no build step, security headers, long cache for the immutable runtime files, no cache for
+`sw.js` and the manifest; `.vercelignore`: only `web/` and `vercel.json` are uploaded).
 
 Browser-specific behaviour in the code: `sys.platform == "emscripten"`. Things to know:
 
 - **pdfminer's debug logging is switched off** (`ingest.py`). In the browser every log line is forwarded to the
   page, which made PDF parsing about 80 times slower and could crash the tab.
-- OCR raises a clear "use the Desktop or Server edition" error.
+- Scanned documents raise a clear "use the download version" message.
 - The first visit downloads tens of megabytes (the Python runtime and packages); the runtime files are marked
   immutable, so later visits load them from the browser cache.
 
-### Desktop edition: launchers at the repository root, docs in `editions/desktop/`
+### Download version: launchers at the repository root, user guide in `editions/desktop/`
 
 Three launchers sit at the top of the download so users find them straight away: `Start anyrecon (Windows).bat`,
 `Start anyrecon (Mac).command` and `start-anyrecon-linux.sh`. Each one:
@@ -441,7 +451,7 @@ Three launchers sit at the top of the download so users find them straight away:
    runs each (the Microsoft Store puts a `python` shortcut on PATH that exists but doesn't run). Mac and Linux try
    `python3.13` down to `python3`; on a fresh Mac `/usr/bin/python3` is only a stub that offers to install Apple's
    developer tools. If none works: opens python.org (Windows/Mac) and explains what to tick, or prints the package
-   command (Linux), and points to the Browser edition.
+   command (Linux), and points to the web app.
 2. On first run, creates `.venv` inside the folder and runs `pip install -e ".[ui,ocr]"`. Success writes the marker
    file `.venv/anyrecon-ready`; without it, the next start resumes setup, so an interrupted install never leaves a
    broken copy.
@@ -452,16 +462,71 @@ before reading anything else. `.gitattributes` keeps Windows line endings in the
 website (`web/`) out of GitHub's ZIP download, which keeps it at about 1 MB. Tesseract is optional, for scans.
 `.streamlit/config.toml` holds the theme and settings.
 
-### Server edition: `editions/server/`
+## Data size and speed
 
-`Dockerfile` (Python slim + Tesseract, runs as a non-root user) and `compose.yaml` (port 8501, **read-only
-file system** with an in-memory `/tmp`, health check). **It has no login of its own**: put it behind your
-organisation's sign-in (SSO / reverse proxy) on the internal network. Never expose it to the public internet.
+How much data each version handles comfortably, measured with `scripts/benchmark.py`. The benchmark builds three
+realistic files of the same length (a processor export; a ledger with prefixed references; a bank statement with
+the reference buried in the narration and a 1.5% fee deducted; a few percent of breaks on each side) and times
+what a user waits for: reading the files, proposing the connections, matching, and the Excel report.
 
-## Run it on your computer
+**Comfortable sizes:** the web app up to about **250,000 rows per file** (37 MB for three files), at most about
+500,000. The download version up to about **1,000,000 rows per file** (150 MB) on a computer with 8 GB of memory,
+and further with more memory.
 
-The Desktop edition, for large files, scanned documents or working offline. Same app, same results; files never
-leave the computer. The landing page offers it under **Run it on your computer**, with the visitor's system
+| Rows per file | Data (3 files) | Web app | Download version | Download version memory |
+|---|---|---|---|---|
+| 10,000 | 1.5 MB | 17 s | 6 s | 0.2 GB |
+| 50,000 | 7.5 MB | 57 s | 25 s | 0.4 GB |
+| 100,000 | 15 MB | 1.8 min | 48 s | 0.6 GB |
+| 250,000 | 37 MB | 4.2 min | 2.0 min | 1.3 GB |
+| 500,000 | 75 MB | 8.9 min, close to its memory limit | 4.1 min | 2.4 GB |
+| 1,000,000 | 150 MB | Doesn't fit (see below) | 8.4 min | 4.7 GB |
+
+**Why the web app stops sooner.** The web app's engine runs inside the browser, which gives it at most 4 GB of
+memory per tab, whatever the computer has. At 500,000 rows per file the browser used about 3.7 GB; 1,000,000 rows
+need about 4.7 GB even in the more frugal download version, so they don't fit (an estimate from the measurements
+above, not a crash test). It is also about twice as slow: the same Python code runs compiled for the browser. The
+installed app is the same engine in its own window, with the same limits. The download version uses the
+computer's own Python, so it can use all of the computer's memory.
+
+**Time and memory grow in proportion to the data**, roughly 0.5 s and 5 MB per 1,000 rows per file in the download
+version, so the table can be extended in a straight line.
+
+**Reading the table:**
+
+- *Rows per file* is the length of each of the three files; the total is three times that.
+- Times are end to end, from choosing the files to seeing results, on a modest machine (2 CPU cores, 8 GB of
+  memory); the web app's one-off engine start on first visit (about 20 s) isn't included. A recent laptop is faster.
+- Measured 16 Nov 2026, version 0.3.0.
+- Two files are quicker than three: one connection to propose and match instead of two. Wide files (many columns)
+  take longer than narrow ones, and PDFs are slower to read than CSV or Excel (about a tenth of a second per page).
+- The Excel report holds up to 1,048,576 rows per sheet; longer tables continue on extra sheets.
+
+Re-run it on your own machine: `python scripts/benchmark.py` (download version) or
+`python scripts/benchmark.py --browser` (web app, needs `web/` built and Playwright).
+
+## Use it as an app
+
+In Chrome or Edge, the web app can be added as an app: the install icon at the right end of the address bar, or
+the **Install app** button at the top of the page. It then opens in its own window from the Start menu, Dock or
+desktop. It is a Progressive Web App:
+
+- `manifest.webmanifest` gives the name, icons and "open in its own window" (`display: standalone`).
+- `sw.js`, a service worker, keeps a copy of the app's own files (the page, the engine, the UI). The page and the
+  app's Python files are fetched from the network first so updates arrive, falling back to the copy when offline;
+  the versioned runtime files (`/pyodide/`, `/stlite/`, `/wheels/`) are served from the copy. Each build has a new
+  version number, and old copies are deleted when it activates.
+- The service worker never sees user files: those are opened inside the page and never requested over the network.
+
+Once added and opened once, it starts with no internet connection (tested: opened offline in 0.2 seconds and
+reconciled four files). It handles the same amount of data as the web page, because it is the same page.
+Remove it from the app's ⋮ menu → **Uninstall**. Safari on Mac can add it to the Dock (File → Add to Dock); Firefox
+doesn't install web apps.
+
+## Download for your computer
+
+For large files, scanned documents, or working offline from the first run. Same app, same results; files never
+leave the computer. The home page offers it under **Download for your computer**, with the visitor's system
 pre-selected. Full user instructions:
 [editions/desktop/README.md](https://github.com/georgethesixth/anyrecon/blob/main/editions/desktop/README.md).
 
@@ -488,14 +553,14 @@ unzips into a folder called `anyrecon-main`.
 
 | Situation | What happens | What to do |
 |---|---|---|
-| IT doesn't allow installing Python | The launcher can't find Python | Use the Browser edition, or ask IT |
+| IT doesn't allow installing Python | The launcher can't find Python | Use the web app, or ask IT |
 | IT blocks `.bat` or `.command` files | Nothing runs | Same |
 | The company network blocks pypi.org | "Setup could not download what it needs" | Ask IT to allow pypi.org once, or do the first run on another network; the launcher resumes where it stopped |
 | The folder is read-only (e.g. inside a ZIP preview, or a synced drive) | "Could not create the environment" | Unzip properly and move the folder to Documents |
 | Port 8501 is in use | Streamlit says so | anyrecon is already running in another window |
 
 **Updating:** download the new ZIP, copy any saved setups (`.json`) across, delete the old folder. The first start
-sets itself up again.
+sets itself up again. What changed in each version: [changelog](https://anyrecon.vercel.app/changelog.html).
 
 **Tested:** the Linux launcher, end to end from a clean download, including resuming an interrupted setup. The
 Windows and Mac launchers follow the same steps but have not yet been run on real machines by the maintainer.
@@ -567,9 +632,9 @@ Exit codes: 2 = blocked by card-data `block` mode; 3 = a file couldn't be read.
 | `.streamlit/config.toml` | Streamlit theme and settings (Desktop/Server). |
 | `editions/browser/` | `build.py` (builds the static site), `check.py` (end-to-end test), `prefetch.txt` (UI pieces to preload). |
 | `Start anyrecon (Windows).bat`, `Start anyrecon (Mac).command`, `start-anyrecon-linux.sh`, `START HERE.txt` | Desktop edition launchers and instructions, at the root so users find them in the download. |
-| `editions/desktop/`, `editions/server/` | Desktop user guide; Server Docker files. Each has a README for end users. |
+| `editions/desktop/` | User guide for the download version. |
 | `.gitattributes` | Keeps `web/` out of GitHub's ZIP download and Windows line endings in the `.bat`. |
-| `web/` | The built Browser edition, served by Vercel. Generated: rebuild, don't edit. |
+| `web/` | The built web app, served by Vercel. Generated: rebuild, don't edit. |
 | `examples/generate_samples.py` | Writes synthetic, deliberately messy test files (CSV, Excel, PDF, JSON, a scan) to `examples/data/`. Fake card numbers use test-only ranges. |
 | `tests/test_engine.py` | Engine tests. |
 | `scripts/pan_scan.py` | Pre-commit hook that blocks commits containing card numbers. |
@@ -584,10 +649,10 @@ pip install -e ".[ui,ocr,dev]"
 pre-commit install                     # card-number check on every commit (pip install pre-commit)
 python examples/generate_samples.py    # test files in examples/data/
 pytest                                 # engine tests
-streamlit run app.py                   # the app, as in the Desktop edition
+streamlit run app.py                   # the app, as the download version runs it
 ```
 
-### Change the Browser edition
+### Change the web app
 
 ```bash
 pip install markdown playwright && python -m playwright install chromium
@@ -632,17 +697,16 @@ Honest list of what doesn't work yet, roughly in order of impact. Good places to
 - **Only percentage fees are applied automatically.** Fixed per-transaction fees are detected and reported but
   not applied; and with automatic detection on, you can't force "no fee" (Advanced treats a fee of 0 as
   "detect").
-- **Scans need the Desktop or Server edition.** OCR quality depends on the scan; low-confidence rows are always
+- **Scans need the download version.** OCR quality depends on the scan; low-confidence rows are always
   sent for review.
-- **Browser edition limits:** the first visit downloads the Python runtime (about 20 seconds on a good line);
+- **Web app limits:** the first visit downloads the Python runtime (about 20 seconds on a good line);
   very large files (hundreds of thousands of rows) are slow or run out of memory in a browser tab.
 - **Discovery samples 20,000 rows** of the left file; near-miss suggestions look at up to 5,000 unmatched rows.
 - **Day/month order** is assumed day-first when the data can't tell.
-- **Server edition has no login**; it relies on your organisation's.
 - **The Change panel** covers the key and the files; amount/date columns and fees are under Advanced.
-- **Untested platforms:** the Windows and Mac launchers and the Docker image have not been run end to end by the
+- **Untested platforms:** the Windows and Mac start files have not been run end to end by the
   maintainer yet. Reports welcome.
-- **The Desktop edition needs Python and, on first run, access to pypi.org.** A ready-to-run app per system (no
+- **The download version needs Python and, on first run, access to pypi.org.** A ready-to-run app per system (no
   Python needed) is on the roadmap; without paid code-signing it would show the same "unidentified developer"
   warnings.
 

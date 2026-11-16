@@ -1,4 +1,4 @@
-"""End-to-end check of the built Browser edition, the way a visitor uses it.
+"""End-to-end check of the built site, the way a visitor uses it.
 
 Serves the built site locally with the same security headers as production (from vercel.json),
 opens it in headless Chromium with every request to any other host blocked, uploads the synthetic
@@ -8,9 +8,9 @@ any part of the UI that failed to load.
 
     pip install playwright && python -m playwright install chromium
     python examples/generate_samples.py            # once: synthetic files in examples/data/
-    python editions/browser/check.py               # checks web/
-    python editions/browser/check.py --record-prefetch
-        # also rewrites editions/browser/prefetch.txt: the UI pieces the page downloads in the
+    python browser/check.py               # checks web/
+    python browser/check.py --record-prefetch
+        # also rewrites browser/prefetch.txt: the UI pieces the page downloads in the
         # background (see build.py). Run this after upgrading stlite or using a new kind of widget,
         # then rebuild.
 """
@@ -26,24 +26,38 @@ import threading
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 FILES = ["processor.csv", "ledger.xlsx", "bank_statement.pdf", "settlement_report.json"]
 
 
 def serve(site: Path, port: int) -> http.server.ThreadingHTTPServer:
-    cfg = json.loads((ROOT / "vercel.json").read_text())
-    headers = [(h["key"], h["value"]) for h in cfg["headers"][0]["headers"]]
+    # Same response headers as production: every vercel.json rule whose source matches the path (later rules win),
+    # and Vercel's default for static files when no rule sets a cache lifetime ("always re-check").
+    rules = [(re.compile(h["source"]), [(x["key"], x["value"]) for x in h["headers"]])
+             for h in json.loads((ROOT / "vercel.json").read_text())["headers"]]
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def end_headers(self):
-            for k, v in headers:
+            path = self.path.split("?", 1)[0]
+            hs = {}
+            for rx, kv in rules:
+                if rx.fullmatch(path):
+                    hs.update(dict(kv))
+            hs.setdefault("Cache-Control", "public, max-age=0, must-revalidate")
+            for k, v in hs.items():
                 self.send_header(k, v)
             super().end_headers()
+
+        def send_header(self, k, v):
+            if k == "Last-Modified":   # Vercel revalidates by ETag; no heuristic freshness from Last-Modified
+                return
+            super().send_header(k, v)
 
         def log_message(self, *a):
             pass
 
-    Handler.extensions_map.update({".mjs": "text/javascript", ".wasm": "application/wasm", ".whl": "application/zip"})
+    Handler.extensions_map.update({".mjs": "text/javascript", ".wasm": "application/wasm", ".whl": "application/zip",
+                                   ".webmanifest": "application/manifest+json"})
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), functools.partial(Handler, directory=str(site)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv

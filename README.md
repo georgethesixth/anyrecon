@@ -9,7 +9,7 @@
 
 ![Identifier discovery: ranked candidates with coverage and examples](docs/screenshot_setup.png)
 
-Drop in a processor export (CSV), a general ledger (Excel), a bank statement (PDF, even scanned), a settlement
+Drop in a processor export (CSV), a general ledger (Excel), a bank statement (PDF; scanned, in the download version), a settlement
 report (JSON), as many as you need. For each pair you choose, anyrecon:
 
 1. **Parses** the file whatever its shape: skips report preambles, finds the real header row, removes repeated
@@ -30,18 +30,20 @@ report (JSON), as many as you need. For each pair you choose, anyrecon:
 > **Design rule:** AI may propose *how* to reconcile and explain the results. It never decides a match.
 > Matching is deterministic code, so results are reproducible and auditable.
 
-## Choose your edition
+## Which version?
 
-| | **Browser** | **Desktop** | **Server** |
-|---|---|---|---|
-| Best for | Anyone, including locked-down work laptops | Large files, scanned documents | IT teams serving a whole organisation |
-| Install | None: [open the link](https://anyrecon.vercel.app) | [Download the ZIP](https://github.com/georgethesixth/anyrecon/archive/refs/heads/main.zip), double-click `Start anyrecon`. Needs Python | Docker |
-| Your files | Stay in the browser tab | Stay on your computer | Stay on your company's server |
-| Scanned documents | – | ✓ | ✓ |
-| AI commentary | – | Optional | Optional |
-| Start here | [editions/browser](editions/browser/README.md) | [editions/desktop](editions/desktop/README.md) | [editions/server](editions/server/README.md) |
+| | **Web app** | **Download version** |
+|---|---|---|
+| Best for | Everyday reconciliations; locked-down work laptops | Large files and month-end volumes; scanned documents |
+| Comfortable size | Up to about 250,000 rows per file (37 MB for three files); 500,000 at most | Up to about 1,000,000 rows per file (150 MB for three files), with 8 GB of memory |
+| Install | None: [open the link](https://anyrecon.vercel.app). Optionally add it as an app from Chrome or Edge | [Download the ZIP](https://github.com/georgethesixth/anyrecon/archive/refs/heads/main.zip) (1 MB), double-click `Start anyrecon`. Needs Python |
+| Your files | Stay in the browser tab | Stay on your computer |
+| Works offline | Yes, once added as an app and opened once | Yes, after the first run |
+| Scanned documents | – | ✓ (with Tesseract) |
+| Start here | [browser/README.md](browser/README.md) | [editions/desktop/README.md](editions/desktop/README.md) |
 
-All three run the same engine and give the same results.
+Both run the same engine and give the same results. Measurements: [Data size and speed](https://anyrecon.vercel.app/guide.html#data-size-and-speed).
+What changed in each version: [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick start (developers)
 
@@ -51,7 +53,7 @@ pip install -e ".[ui,ocr,dev]"      # core needs only pandas, openpyxl, pdfplumb
 python examples/generate_samples.py # synthetic, deliberately messy test files in examples/data/
 
 # web UI (local; files never leave your machine)
-streamlit run app.py      # same as the Desktop edition launchers
+streamlit run app.py      # what the download version's start files run
 
 # or the CLI
 anyrecon inspect examples/data/processor.csv
@@ -156,8 +158,8 @@ ingest ─► PCI guard ─► profile ─► discover ─► (user confirms) �
 ## Security
 
 Read [docs/PCI_DSS.md](docs/PCI_DSS.md). anyrecon stores nothing: no database, no logs, no cache; uploads
-live in memory for the session only. Short version: use the Browser edition or run it locally, never put a Server instance on the public internet
-(it has no login of its own), and never commit real data. The pre-commit hook blocks card numbers.
+live in memory for the session only. Short version: use the web app or the download version; never put the app on a
+public server where other people's files would reach you; and never commit real data. The pre-commit hook blocks card numbers.
 How every part of the tool handles data, step by step: [docs/GUIDE.md](docs/GUIDE.md)
 ([rendered](https://anyrecon.vercel.app/guide.html)).
 

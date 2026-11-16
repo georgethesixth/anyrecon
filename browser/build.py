@@ -1,13 +1,13 @@
-"""Build the Browser edition: a static website that runs anyrecon entirely in the visitor's browser.
+"""Build anyrecon: a static website that runs entirely in the visitor's browser, installable as an app.
 
 Every file the page needs (the app, the Python runtime, all packages) is copied into one folder and
 served from your own domain. Nothing is loaded from third-party CDNs and nothing is fetched from PyPI
 at run time, so it works behind corporate proxies and the page never needs to talk to anyone else.
 
-    python editions/browser/build.py                   # -> editions/browser/site/
-    python editions/browser/build.py --pyodide-dir /path/to/pyodide-314.0.3/pyodide   # offline build
+    python browser/build.py && rm web/_headers      # -> web/ (served by Vercel; vercel.json sets the headers)
+    python browser/build.py --pyodide-dir /path/to/pyodide-314.0.3/pyodide   # offline build
 
-Then upload the contents of site/ to any static host (kemdi.co, GitHub Pages, Netlify, an intranet server).
+Any static host works: upload the contents of the output folder (GitHub Pages, Netlify, an intranet server).
 Build machine needs: Python 3.10+, npm, internet (or --pyodide-dir), and the `markdown` package (renders the guide).
 """
 from __future__ import annotations
@@ -32,10 +32,10 @@ PYODIDE_PACKAGES = ["micropip", "packaging", "numpy", "pandas", "pyarrow", "pill
                     "starlette", "anyio", "pyodide-http", "python-dateutil", "pytz", "six", "charset-normalizer", "cryptography",
                     "ssl", "pyodide-unix-timezones"]
 # Pure-Python wheels not in Pyodide, bundled from PyPI at build time.
-PURE_WHEELS = ["python-multipart", "itsdangerous", "openpyxl", "et-xmlfile", "pdfminer.six"]
+PURE_WHEELS = ["python-multipart", "itsdangerous", "openpyxl", "et-xmlfile", "pdfminer.six", "xlsxwriter"]
 NO_DEPS_WHEELS = ["pdfplumber"]      # its pypdfium2 dependency is only used for page images, which the browser edition doesn't need
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / ".cache"
 
@@ -146,13 +146,14 @@ html{scroll-behavior:smooth}
 """
 
 
-def _guide(out: Path, ui) -> None:
-    """Render docs/GUIDE.md to guide.html, styled like the app, with no scripts."""
+def _doc(out: Path, ui, src: Path, name: str, title: str, description: str) -> None:
+    """Render a markdown file to <name>.html, styled like the app, with no scripts."""
     import markdown
-    src = (ROOT / "docs" / "GUIDE.md").read_text(encoding="utf-8")
-    body = markdown.markdown(src, extensions=["tables", "fenced_code", "toc"], output_format="html")
+    body = markdown.markdown(src.read_text(encoding="utf-8"), extensions=["tables", "fenced_code", "toc"], output_format="html")
+    rel = src.relative_to(ROOT).as_posix()
     nav = (f'<nav class="ar-nav"><a class="ar-logo" href="./"><b>ar</b>anyrecon</a><div class="ar-navlinks">'
-           f'<a href="./">Open anyrecon</a><a href="{ui.REPO}" target="_blank" rel="noopener">GitHub</a></div></nav>')
+           f'<a href="./">Open anyrecon</a><a href="./guide.html">Guide</a><a href="./changelog.html">What\'s new</a>'
+           f'<a href="{ui.REPO}" target="_blank" rel="noopener">GitHub</a></div></nav>')
     html = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -160,27 +161,125 @@ def _guide(out: Path, ui) -> None:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="{CSP}">
 <meta name="referrer" content="no-referrer">
-<meta name="description" content="How anyrecon works and how it handles your data: the full technical guide.">
-<title>anyrecon · Guide</title>
+<meta name="description" content="{description}">
+<title>anyrecon · {title}</title>
+<link rel="icon" href="./favicon-32.png" type="image/png">
+<link rel="manifest" href="./manifest.webmanifest">
 <link rel="stylesheet" href="./guide.css">
 </head>
 <body>
 <div class="ar-wrap">{nav}</div>
 <main class="g-body">{body}
-<p class="g-edit">This page is generated from <a href="{ui.REPO}/blob/main/docs/GUIDE.md" target="_blank" rel="noopener">docs/GUIDE.md</a>.
-Found something wrong or out of date? <a href="{ui.REPO}/edit/main/docs/GUIDE.md" target="_blank" rel="noopener">Edit it on GitHub</a>.</p>
+<p class="g-edit">This page is generated from <a href="{ui.REPO}/blob/main/{rel}" target="_blank" rel="noopener">{rel}</a>.
+Found something wrong or out of date? <a href="{ui.REPO}/edit/main/{rel}" target="_blank" rel="noopener">Edit it on GitHub</a>.</p>
 </main>
-<div class="ar-wrap">{ui.footer(ui_version(), "Browser")}</div>
+<div class="ar-wrap">{ui.footer(*ui_version())}</div>
 </body>
 </html>
 """
-    (out / "guide.css").write_text("body{margin:0;background:#fff;font-family:var(--font);-webkit-font-smoothing:antialiased}" + ui.BASE_CSS + GUIDE_CSS, encoding="utf-8")
-    (out / "guide.html").write_text(html, encoding="utf-8")
-    log("guide.html written")
+    (out / f"{name}.html").write_text(html, encoding="utf-8")
 
 
-def ui_version() -> str:
-    return re.search(r'__version__\s*=\s*"([^"]+)"', (ROOT / "anyrecon" / "__init__.py").read_text()).group(1)
+def _guide(out: Path, ui) -> None:
+    (out / "guide.css").write_text("body{margin:0;background:#fff;font-family:var(--font);-webkit-font-smoothing:antialiased}"
+                                   + ui.BASE_CSS + GUIDE_CSS, encoding="utf-8")
+    _doc(out, ui, ROOT / "docs" / "GUIDE.md", "guide", "Guide", "How anyrecon works and how it handles your data: the full technical guide.")
+    _doc(out, ui, ROOT / "CHANGELOG.md", "changelog", "What's new", "anyrecon versions and what changed in each.")
+    log("guide.html and changelog.html written")
+
+
+def ui_version() -> tuple[str, str]:
+    init = (ROOT / "anyrecon" / "__init__.py").read_text()
+    return (re.search(r'__version__\s*=\s*"([^"]+)"', init).group(1), re.search(r'__released__\s*=\s*"([^"]+)"', init).group(1))
+
+
+# ---------------------------------------------------------------- installable app (PWA)
+# Chrome/Edge show an install icon in the address bar when the site has a manifest and a service worker.
+# The service worker keeps a copy of everything the app loads, so once installed and opened it also
+# starts with no internet connection. It only ever stores the app's own files, never user data.
+PWA_JS = r"""
+(() => {
+  const btn = document.getElementById("arInstall");
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  if (standalone) { const s = document.getElementById("install"); if (s) s.hidden = true; }
+  if ("serviceWorker" in navigator) {
+    addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  }
+  let deferred = null;
+  addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferred = e; if (btn) btn.hidden = false; });
+  addEventListener("appinstalled", () => { deferred = null; if (btn) btn.hidden = true; });
+  if (btn) btn.addEventListener("click", async () => {
+    if (!deferred) return;
+    deferred.prompt();
+    try { await deferred.userChoice; } catch (e) {}
+    deferred = null; btn.hidden = true;
+  });
+})();
+"""
+
+SW_JS = r"""// anyrecon service worker. Caches the app's own files so the installed app starts offline.
+// It never sees user files: those are opened inside the page and never requested over the network.
+const VERSION = "__VERSION__";
+const CACHE = "anyrecon-" + VERSION;
+const SHELL = __SHELL__;
+const IMMUTABLE = /\/(pyodide|stlite|wheels|app)\//;   // content-hashed or versioned: cache first
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(caches.keys()
+    .then((keys) => Promise.all(keys.filter((k) => k.startsWith("anyrecon-") && k !== CACHE).map((k) => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+
+const put = (req, res) => { if (res && res.ok && res.type === "basic") caches.open(CACHE).then((c) => c.put(req, res.clone())); return res; };
+
+self.addEventListener("fetch", (e) => {
+  const req = e.request;
+  const url = new URL(req.url);
+  if (req.method !== "GET" || url.origin !== location.origin) return;
+  if (IMMUTABLE.test(url.pathname)) {
+    e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((res) => put(req, res))));
+    return;
+  }
+  // Everything else: the network first (so updates arrive), the cached copy when offline or slow.
+  e.respondWith((async () => {
+    try {
+      const res = await Promise.race([fetch(req), new Promise((_, no) => setTimeout(() => no(new Error("slow")), 6000))]);
+      return put(req, res);
+    } catch (err) {
+      const hit = await caches.match(req, { ignoreSearch: req.mode === "navigate" });
+      return hit || (req.mode === "navigate" ? caches.match("./index.html") : Response.error());
+    }
+  })());
+});
+"""
+
+
+def _pwa(out: Path, app_files: list[str]) -> None:
+    import hashlib
+    for f in (HERE / "assets").glob("*.png"):
+        shutil.copy2(f, out / f.name)
+    manifest = {
+        "id": "./", "name": "anyrecon", "short_name": "anyrecon",
+        "description": "Reconcile any set of documents. Runs on your device; files are never uploaded.",
+        "start_url": "./", "scope": "./", "display": "standalone",
+        "background_color": "#FFFFFF", "theme_color": "#FFFFFF",
+        "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                  {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                  {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}],
+    }
+    (out / "manifest.webmanifest").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+    shell = ["./", "./index.html", "./boot.js", "./boot.css", "./guide.html", "./changelog.html", "./guide.css", "./manifest.webmanifest",
+             "./icon-192.png", "./icon-512.png", "./stlite/stlite.js", "./stlite/stlite.css"] + [f"./{f}" for f in app_files]
+    h = hashlib.sha256()
+    for rel in shell[1:]:
+        h.update((out / rel[2:]).read_bytes())
+    sw = SW_JS.replace("__VERSION__", h.hexdigest()[:12]).replace("__SHELL__", json.dumps(shell))
+    (out / "sw.js").write_text(sw, encoding="utf-8")
+    log(f"installable app: manifest + service worker (version {h.hexdigest()[:12]})")
 
 
 def log(msg):
@@ -238,7 +337,7 @@ def pip_download(names: list[str], out: Path) -> list[str]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pyodide-dir", type=Path, help="local Pyodide full distribution (offline build)")
-    ap.add_argument("--out", type=Path, default=HERE / "site")
+    ap.add_argument("--out", type=Path, default=ROOT / "web")
     a = ap.parse_args()
     out: Path = a.out
     if out.exists():
@@ -273,14 +372,22 @@ def main():
     files["ui_theme.py"] = ROOT / "ui_theme.py"
     for w in nodeps:   # pure-Python, imported straight from the wheel (zip) at start-up: see app.py
         files[f"wheels/{w}"] = out / "wheels" / w
+    # The app's code goes in a folder named after a fingerprint of its contents (app/<hash>/), so each release
+    # gets new addresses and the files can be cached as immutable, like the runtime. That matters offline: the
+    # Python worker fetches them itself, outside the service worker, so only the browser's cache can serve them.
+    import hashlib
+    fp = hashlib.sha256()
+    for rel in sorted(files):
+        fp.update(rel.encode()); fp.update(Path(files[rel]).read_bytes())
+    app_dir = f"app/{fp.hexdigest()[:12]}"
     for rel, src in files.items():
-        dst = out / "app" / rel
+        dst = out / app_dir / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
-    log(f"{len(files)} app files")
+    log(f"{len(files)} app files in {app_dir}/")
 
     # 5. Page
-    stl_files = {rel: {"url": f"./app/{rel}"} for rel in files}
+    stl_files = {rel: {"url": f"./{app_dir}/{rel}"} for rel in files}
     streamlit_whl = next((stl / "wheels").glob("streamlit-*.whl")).name
     stlite_whl = next((stl / "wheels").glob("stlite_lib-*.whl")).name
     opts = {
@@ -300,7 +407,8 @@ def main():
     if len(prefetch) < len(wanted):
         log(f"warning: {len(wanted) - len(prefetch)} prefetch chunk(s) not found (stlite version changed?): refresh prefetch.txt")
     version = re.search(r'__version__\s*=\s*"([^"]+)"', (ROOT / "anyrecon" / "__init__.py").read_text()).group(1)
-    landing = ui.landing_page("Browser", version, browser=True)
+    released = re.search(r'__released__\s*=\s*"([^"]+)"', (ROOT / "anyrecon" / "__init__.py").read_text()).group(1)
+    landing = ui.landing_page(version, released)
     html = f"""<!doctype html>
 <html lang="en" class="landing">
 <head>
@@ -311,7 +419,9 @@ def main():
 <meta name="description" content="Reconcile any set of documents, in your browser. Files are never uploaded.">
 <meta name="theme-color" content="#FFFFFF">
 <title>anyrecon</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232457D6'/%3E%3Ctext x='32' y='42' font-family='Arial,sans-serif' font-weight='700' font-size='28' text-anchor='middle' fill='%23fff'%3Ear%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="./favicon-32.png" type="image/png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="manifest" href="./manifest.webmanifest">
 <link rel="stylesheet" href="./boot.css">
 <link rel="stylesheet" href="./stlite/stlite.css">
 </head>
@@ -333,8 +443,9 @@ def main():
         'const abs = (v) => typeof v === "string" && v.startsWith("./") ? new URL(v, base).href\n'
         '  : Array.isArray(v) ? v.map(abs) : (v && typeof v === "object") ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, abs(x)])) : v;\n'
         f'const options = {json.dumps(opts, indent=1)};\n'
-        + LANDING_JS.replace("PREFETCH", json.dumps(prefetch)) +
+        + LANDING_JS.replace("PREFETCH", json.dumps(prefetch)) + PWA_JS +
         'mount(abs(options), document.getElementById("root"));\n', encoding="utf-8")
+    _pwa(out, [f"{app_dir}/{f}" for f in sorted(stl_files)])
     # Response headers for hosts that support them (Netlify / Cloudflare Pages). These also cover the
     # Python worker, which a <meta> CSP does not reach.
     (out / "_headers").write_text("/*\n"

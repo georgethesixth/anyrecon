@@ -1,8 +1,4 @@
-# Keep the downloadable ZIP small: the built Browser edition (web/) and site config are only for Vercel.
+# Keep GitHub's source ZIP small: the built site (web/) and its config are only for Vercel.
 web/ export-ignore
 vercel.json export-ignore
 .vercelignore export-ignore
-# Windows batch files need Windows line endings.
-*.bat text eol=crlf
-*.command text eol=lf
-*.sh text eol=lf

@@ -160,6 +160,8 @@ def guard(ds: Dataset, mode: str = "strict", mask_columns=(), keep_columns=()) -
 
         masked_vals = {}
         total_hits = 0
+        # Only cells with a 13-19 digit run can hold a card number: filter fast, then check those cells.
+        nn = nn[nn.str.contains(PAN_RE, na=False)]
         for idx, val in nn.items():
             new, hits = _mask_text(val)
             if hits:

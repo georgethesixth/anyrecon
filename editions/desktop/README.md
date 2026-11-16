@@ -1,8 +1,8 @@
-# anyrecon · Desktop edition
+# anyrecon · Download version
 
 For large files, scanned documents and working offline. Runs on your own computer; your files never leave it.
 
-> Can't install anything on your work laptop? Use the **[Browser edition](https://anyrecon.vercel.app)**: nothing
+> Can't install anything on your work laptop? Use the **[web app](https://anyrecon.vercel.app)**: nothing
 > to install, and files never leave the browser tab.
 
 About 10 minutes the first time; after that, one double-click.

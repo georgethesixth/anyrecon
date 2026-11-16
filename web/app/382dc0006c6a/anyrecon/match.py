@@ -341,12 +341,15 @@ class Matcher:
                                                    "date_gap_days", "confidence", "rule"])
         insights = self._insights(matches)
         exc = []
-        for _, m in matches[matches.status != "matched"].iterrows():
-            detail = {"amount_variance": f"amount differs by {m.difference}",
-                      "date_variance": f"dates {m.date_gap_days} days apart (window ±{cfg.date_window_days}d)",
-                      "needs_review": "OCR-derived row below confidence threshold; verify against the source image"}[m.status]
-            exc.append(dict(category=m.status, side="both", rows=f"L[{m.left_rows}] R[{m.right_rows}]", key=m.key,
-                            left_amount=m.left_amount, right_amount=m.right_amount, detail=detail, suggestion="", match_id=m.match_id))
+        bad = matches[matches.status != "matched"]
+        for m in zip(bad.status, bad.difference, bad.date_gap_days, bad.left_rows, bad.right_rows, bad.key,
+                     bad.left_amount, bad.right_amount, bad.match_id):
+            status, diff, gap, lrows, rrows, key, la, ra, mid = m
+            detail = {"amount_variance": f"amount differs by {diff}",
+                      "date_variance": f"dates {gap} days apart (window ±{cfg.date_window_days}d)",
+                      "needs_review": "OCR-derived row below confidence threshold; verify against the source image"}[status]
+            exc.append(dict(category=status, side="both", rows=f"L[{lrows}] R[{rrows}]", key=key,
+                            left_amount=la, right_amount=ra, detail=detail, suggestion="", match_id=mid))
         sugg_l, sugg_r = self._suggestions()
         for side, S, label, sugg in ((L, L, "left", sugg_l), (R, R, "right", sugg_r)):
             other = cfg.right if label == "left" else cfg.left
@@ -420,12 +423,20 @@ class Matcher:
         cache = getattr(self, "_key_cache", None)
         if cache is not None and self.cfg.keys and self.cfg.keys[0].mode == "key":
             kl, kr = cache
-            lu = [i for i in np.where(~self.L.used)[0] if isinstance(kl.iloc[i], str)][:5000]
-            ru = [i for i in np.where(~self.R.used)[0] if isinstance(kr.iloc[i], str)]
-            choices = {i: kr.iloc[i] for i in ru}
-            if choices:
+            klv, krv = kl.to_numpy(dtype=object), kr.to_numpy(dtype=object)
+            lu = [i for i in np.where(~self.L.used)[0] if isinstance(klv[i], str)][:5000]
+            ru = [i for i in np.where(~self.R.used)[0] if isinstance(krv[i], str)]
+            # Only compare keys sharing their first or last 3 characters: a single wrong, missing or extra
+            # character always leaves one end intact, and this keeps the work proportional to the data.
+            by_start, by_end = defaultdict(dict), defaultdict(dict)
+            for j in ru:
+                by_start[krv[j][:3]][j] = krv[j]
+                by_end[krv[j][-3:]][j] = krv[j]
+            if ru:
                 for i in lu:
-                    hit = extract_one(kl.iloc[i], choices, 85)
+                    q = klv[i]
+                    choices = {**by_start.get(q[:3], {}), **by_end.get(q[-3:], {})}
+                    hit = extract_one(q, choices, 85) if choices else None
                     if hit:
                         _, score, j = hit
                         sl[i] = f"possible key typo: right row {self.R.ids[j]} has '{kr.iloc[j]}' ({score:.0f}% similar)"
@@ -438,20 +449,28 @@ class Matcher:
             tcol = spec.right_col if text_right else spec.left_col
             icol, itf = (spec.left_col, spec.left_tf) if text_right else (spec.right_col, spec.right_tf)
             ids = apply_transform(I.df[icol], itf if itf != "extract" else "nozeros")
-            free_ids = [j for j in np.where(~I.used)[0] if isinstance(ids.iloc[j], str)]
-            for t in np.where(~T.used)[0][:5000]:
-                txt = T.df[tcol].iloc[t]
-                if not isinstance(txt, str):
+            idv = ids.to_numpy(dtype=object)
+            free = np.array([j for j in np.where(~I.used)[0] if isinstance(idv[j], str)], dtype=int)
+            if len(free):
+                famt = I.amt[free]
+                fexp = famt * (1 - self.cfg.expected_fee_pct / 100.0) if text_right else famt
+                fdate = I.date[free]
+            texts = T.df[tcol].to_numpy(dtype=object)
+            for t in (np.where(~T.used)[0][:5000] if len(free) else []):
+                txt = texts[t]
+                if not isinstance(txt, str) or np.isnan(T.amt[t]):
                     continue
+                # vectorised pre-filter: same amount (after fee) and dates within the window
+                target = T.amt[t] if text_right else T.amt[t] * (1 - self.cfg.expected_fee_pct / 100.0)
+                diff = np.abs(fexp - target)
+                tolerance = np.maximum(self.cfg.amount_tol, np.abs(fexp if text_right else target) * self.cfg.amount_tol_pct / 100)
+                ok = np.isnan(famt) | (diff <= tolerance + 1e-9)
+                if not pd.isna(T.date[t]):
+                    gaps = np.abs((fdate - T.date[t]) / np.timedelta64(1, "D"))
+                    ok &= np.isnan(gaps) | (gaps <= self.cfg.date_window_days)
                 compact = re.sub(r"[^A-Z0-9]", "", txt.upper())
-                for j in free_ids:
-                    a_ok = self.amount_ok(I.amt[j], T.amt[t]) if text_right else self.amount_ok(T.amt[t], I.amt[j])
-                    if not a_ok or np.isnan(T.amt[t]):
-                        continue
-                    gap = self.date_gap([j], [t]) if text_right else self.date_gap([t], [j])
-                    if not (np.isnan(gap) or gap <= self.cfg.date_window_days):
-                        continue
-                    score = partial_ratio(ids.iloc[j], compact)
+                for j in free[ok][:50]:
+                    score = partial_ratio(idv[j], compact)
                     if score >= 90:
                         msg_t = f"narration nearly contains '{ids.iloc[j]}' ({score:.0f}% similar) from row {I.ids[j]}, and amount/date agree: likely typo or OCR misread"
                         msg_i = f"row {T.ids[t]} narration nearly contains this reference ({score:.0f}% similar) and amount/date agree"

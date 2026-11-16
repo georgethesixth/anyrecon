@@ -21,11 +21,10 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 !docs/*.png
+!browser/assets/*.png
 
-# Browser edition build output (publish it, don't commit it)
-editions/browser/site/
-editions/browser/.cache/
-.venv/
+# Build cache (stlite and Pyodide downloads)
+browser/.cache/
 
-# web/ is the published Browser edition (prebuilt, served by Vercel): keep everything in it
+# web/ is the published site (prebuilt by browser/build.py, served by Vercel): keep everything in it
 !web/**

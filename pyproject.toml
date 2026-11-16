@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anyrecon"
-version = "0.1.0"
+version = "0.3.0"
 description = "Reconcile any set of documents: identifier discovery, tiered deterministic matching, PCI-aware ingestion."
 readme = "README.md"
 license = { text = "MIT" }
@@ -12,7 +12,8 @@ requires-python = ">=3.10"
 dependencies = [
   "pandas>=2.0",
   "numpy",
-  "openpyxl>=3.1",
+  "openpyxl>=3.1",      # reading Excel
+  "xlsxwriter>=3.1",    # writing the report (streams rows to disk: fast, low memory)
   "pdfplumber>=0.11",
 ]
 

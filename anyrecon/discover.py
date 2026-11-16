@@ -88,12 +88,48 @@ def find_in_text(v, keyset: set[str], lengths: list[int]) -> tuple[str | None, s
     return None, ""
 
 
-def extract_against(text: pd.Series, keyset: set[str], with_how: bool = False):
+def prepare_text(text: pd.Series) -> list:
+    """Tokenise each text cell once (tokens, letters+digits joined, digits only), so several key sets can
+    be searched without re-reading the text."""
+    out = []
+    for v in text.tolist():
+        if not isinstance(v, str):
+            out.append(None)
+            continue
+        u = v.upper()
+        out.append((text_tokens(v), re.sub(r"[^A-Z0-9]", "", u), re.sub(r"\D", "", u)))
+    return out
+
+
+def _find_prepared(p, keyset: set[str], lengths: list[int]) -> tuple[str | None, str]:
+    """find_in_text() on a prepare_text() entry."""
+    if p is None:
+        return None, ""
+    toks, alnum, digits = p
+    for t in toks:
+        if t in keyset:
+            return t, "token"
+    for s in (alnum, digits):
+        for L in lengths:
+            for i in range(0, len(s) - L + 1):
+                w = s[i:i + L]
+                if w[0] != "0" and w in keyset:
+                    return w, "substring"
+    return None, ""
+
+
+def extract_against(text: pd.Series, keyset: set[str], with_how: bool = False, prepared: list | None = None):
     """For each text cell, the first known identifier it contains."""
     lengths = sorted({len(k) for k in keyset if len(k) >= SUBSTRING_MIN}, reverse=True)[:12]
-    found = text.map(lambda v: find_in_text(v, keyset, lengths))
-    keys = found.map(lambda t: t[0])
-    return (keys, found.map(lambda t: t[1])) if with_how else keys
+    prep = prepared if prepared is not None else prepare_text(text)
+    found = [_find_prepared(p, keyset, lengths) for p in prep]
+    keys = pd.Series([f[0] for f in found], index=text.index, dtype=object)
+    return (keys, pd.Series([f[1] for f in found], index=text.index, dtype=object)) if with_how else keys
+
+
+def _isin(s: pd.Series, values) -> pd.Series:
+    """Membership test that avoids pandas' slow path for Arrow-backed strings."""
+    return s.astype(object).isin(values)
 
 
 @dataclass
@@ -177,8 +213,8 @@ def discover(left: Dataset, right: Dataset, top: int = 8, sample: int = 20000,
                 if max(ul, ur) < 0.3:
                     continue
                 rset, lset = set(rn), set(ln)
-                cl = float(lk.isin(rset).sum() / max(1, L[lc].notna().sum()))
-                cr = float(rk.isin(lset).sum() / max(1, R[rc].notna().sum()))
+                cl = float(_isin(lk, rset).sum() / max(1, L[lc].notna().sum()))
+                cr = float(_isin(rk, lset).sum() / max(1, R[rc].notna().sum()))
                 if cl == 0 and cr == 0:
                     continue
                 sem_bonus = 1.03 if lp[lc].semantic and lp[lc].semantic == rp[rc].semantic else 1.0
@@ -193,6 +229,8 @@ def discover(left: Dataset, right: Dataset, top: int = 8, sample: int = 20000,
                 cands.append(best)
 
     # 2) identifier embedded in free text (bank narrations etc.)
+    prepared: dict[tuple[int, str], list] = {}
+
     def extract(id_df, id_profiles, text_df, text_profiles, id_is_left):
         for ic in _key_cols(id_profiles):
             for tc in _text_cols(text_profiles):
@@ -204,12 +242,15 @@ def discover(left: Dataset, right: Dataset, top: int = 8, sample: int = 20000,
                     idset = set(ids.dropna())
                     if not idset or _uniq(ids) < 0.5:
                         continue
-                    found = extract_against(text_df[tc], idset)
+                    pk = (id(text_df), tc)
+                    if pk not in prepared:
+                        prepared[pk] = prepare_text(text_df[tc])
+                    found = extract_against(text_df[tc], idset, prepared=prepared[pk])
                     if found.notna().sum() == 0:
                         continue
                     nt, ni = int(text_df[tc].notna().sum()), int(id_df[ic].notna().sum())
                     ct = float(found.notna().sum() / max(1, nt))
-                    ci = float(ids.isin(set(found.dropna())).sum() / max(1, ni))
+                    ci = float(_isin(ids, set(found.dropna())).sum() / max(1, ni))
                     score = _cov_score(ci, ct, ni, nt) * weight
                     if best is None or score > best[0]:
                         ex = [(id_df.loc[ids == found[idx], ic].iloc[0], text_df.at[idx, tc]) for idx in found.dropna().index[:3]]
