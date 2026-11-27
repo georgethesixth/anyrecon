@@ -2,11 +2,31 @@
 
 | Version | Latest | Updated |
 |---|---|---|
-| **Web app** (anyrecon.vercel.app, also installable as an app) | 0.3.0 | 16 Nov 2026 |
-| **Download version** (Windows, Mac, Linux) | 0.3.0 | 16 Nov 2026 |
+| **Web app** (anyrecon.vercel.app, also installable as an app) | 0.3.1 | 27 Nov 2026 |
+| **Download version** (Windows, Mac, Linux) | 0.3.1 | 27 Nov 2026 |
 
 Both versions run the same engine and give the same results. The web app updates itself; for the download
 version, download the new ZIP. Dates are when a change went live.
+
+## 0.3.1 · 27 Nov 2026
+
+**Fixed**
+
+- **The Excel report was blank after the first column** in every report downloaded since 16 Nov (0.3.0). Each
+  sheet now has its data; the release check opens the report and fails on any empty column.
+
+**Report (both versions)**
+
+- **Simpler report, chosen at download.** **Download report** opens a short list: **Matched** and **Exceptions**
+  are ticked; Groups, Overview, Only in each file, Across all files and the audit trail are optional.
+- **Exceptions explain themselves.** One row per record that didn't reconcile, with the likely reason and what to
+  do. Records with no clear reason come first.
+
+**Engine (both versions)**
+
+- **Charges added on top are applied automatically**, not just fees taken off. When one file is consistently
+  higher by the same percentage (e.g. +2%), those records now count as matched, labelled "2% higher".
+- Records dated outside the other file's period are marked as such ("check the next file").
 
 ## 0.3.0 · 16 Nov 2026
 

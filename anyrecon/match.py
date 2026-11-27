@@ -403,8 +403,8 @@ class Matcher:
             share = float((abs(pct - med) <= 0.05).mean())
             if share >= 0.7:
                 self.detected_fee_pct = round(-med, 2)
-                out.append(f"{share:.0%} of amount variances sit at {med:+.2f}% of the left amount: consistent with a percentage fee/MDR. "
-                           f"Re-run with expected_fee_pct={-med:.2f} to reconcile net of fees.")
+                out.append(f"{share:.0%} of amount differences are {self.cfg.right} {abs(med):.2f}% {'lower' if med < 0 else 'higher'} "
+                           f"than {self.cfg.left}: likely a {abs(med):.2f}% {'fee taken' if med < 0 else 'charge added'}.")
             diff = var.right_amount.astype(float) - var.left_amount.astype(float)
             dmed = float(diff.median())
             dshare = float((abs(diff - dmed) <= 0.01).mean())

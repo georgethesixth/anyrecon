@@ -65,11 +65,11 @@ def auto_pairs(datasets: dict[str, Dataset], candidates: dict | None = None, dat
 
 
 def reconcile_auto(left: Dataset, right: Dataset, cfg: PairConfig):
-    """Reconcile; if the breaks show a consistent percentage fee (e.g. MDR taken at settlement),
+    """Reconcile; if the breaks show a consistent percentage difference (a fee taken, e.g. MDR, or a charge added),
     apply it and keep the re-run when it matches more."""
     res = reconcile(left, right, cfg)
     fee = res.summary.get("detected_fee_pct")
-    if fee and 0 < fee <= 20 and not cfg.expected_fee_pct:
+    if fee and -20 <= fee <= 20 and not cfg.expected_fee_pct:   # deducted (MDR) or added on top (a surcharge)
         from dataclasses import replace
         cfg2 = replace(cfg, expected_fee_pct=fee)
         res2 = reconcile(left, right, cfg2)

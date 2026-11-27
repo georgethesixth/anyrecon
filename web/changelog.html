@@ -25,18 +25,37 @@
 <tbody>
 <tr>
 <td><strong>Web app</strong> (anyrecon.vercel.app, also installable as an app)</td>
-<td>0.3.0</td>
-<td>16 Nov 2026</td>
+<td>0.3.1</td>
+<td>27 Nov 2026</td>
 </tr>
 <tr>
 <td><strong>Download version</strong> (Windows, Mac, Linux)</td>
-<td>0.3.0</td>
-<td>16 Nov 2026</td>
+<td>0.3.1</td>
+<td>27 Nov 2026</td>
 </tr>
 </tbody>
 </table>
 <p>Both versions run the same engine and give the same results. The web app updates itself; for the download
 version, download the new ZIP. Dates are when a change went live.</p>
+<h2 id="031-27-nov-2026">0.3.1 · 27 Nov 2026</h2>
+<p><strong>Fixed</strong></p>
+<ul>
+<li><strong>The Excel report was blank after the first column</strong> in every report downloaded since 16 Nov (0.3.0). Each
+  sheet now has its data; the release check opens the report and fails on any empty column.</li>
+</ul>
+<p><strong>Report (both versions)</strong></p>
+<ul>
+<li><strong>Simpler report, chosen at download.</strong> <strong>Download report</strong> opens a short list: <strong>Matched</strong> and <strong>Exceptions</strong>
+  are ticked; Groups, Overview, Only in each file, Across all files and the audit trail are optional.</li>
+<li><strong>Exceptions explain themselves.</strong> One row per record that didn't reconcile, with the likely reason and what to
+  do. Records with no clear reason come first.</li>
+</ul>
+<p><strong>Engine (both versions)</strong></p>
+<ul>
+<li><strong>Charges added on top are applied automatically</strong>, not just fees taken off. When one file is consistently
+  higher by the same percentage (e.g. +2%), those records now count as matched, labelled "2% higher".</li>
+<li>Records dated outside the other file's period are marked as such ("check the next file").</li>
+</ul>
 <h2 id="030-16-nov-2026">0.3.0 · 16 Nov 2026</h2>
 <p><strong>Web app</strong></p>
 <ul>
@@ -106,6 +125,6 @@ version, download the new ZIP. Dates are when a change went live.</p>
 <p class="g-edit">This page is generated from <a href="https://github.com/georgethesixth/anyrecon/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.
 Found something wrong or out of date? <a href="https://github.com/georgethesixth/anyrecon/edit/main/CHANGELOG.md" target="_blank" rel="noopener">Edit it on GitHub</a>.</p>
 </main>
-<div class="ar-wrap"><footer class="ar-foot"><span>anyrecon 0.3.0 · updated 16 Nov 2026 · <a href="https://anyrecon.vercel.app/changelog.html" target="_blank" rel="noopener">What's new</a></span><span>A project by <a href="https://kemdi.co" target="_blank" rel="noopener">Kemdi Okoli</a> · <a href="https://anyrecon.vercel.app/guide.html" target="_blank" rel="noopener">Guide</a> · <a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">Source on GitHub</a></span></footer></div>
+<div class="ar-wrap"><footer class="ar-foot"><span>anyrecon 0.3.1 · updated 27 Nov 2026 · <a href="https://anyrecon.vercel.app/changelog.html" target="_blank" rel="noopener">What's new</a></span><span>A project by <a href="https://kemdi.co" target="_blank" rel="noopener">Kemdi Okoli</a> · <a href="https://anyrecon.vercel.app/guide.html" target="_blank" rel="noopener">Guide</a> · <a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">Source on GitHub</a></span></footer></div>
 </body>
 </html>

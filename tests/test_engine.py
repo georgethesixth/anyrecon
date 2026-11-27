@@ -286,3 +286,54 @@ def test_percentage_fee_detected_and_applied():
     res = reconcile_auto(a, b, cfg)
     assert res.config.expected_fee_pct == 1.5
     assert res.summary["matched_groups"] == 30
+
+
+def test_report_writes_every_column(tmp_path):
+    """Regression: 0.3.0 streamed rows to disk while pandas wrote column by column, so every column after the
+    first came out blank. Every sheet must have data in every column that has data."""
+    from anyrecon.report import write_excel
+    from anyrecon.export import SHEETS
+    ids = [f"TX{1000 + i}" for i in range(30)]
+    a = _ds(pd.DataFrame({"ref": ids, "amount": [100.0 + i for i in range(30)], "date": ["2026-10-01"] * 30}), "a")
+    b = _ds(pd.DataFrame({"ref": ids[:25] + ["ZZ1"], "amount": [100.0 + i for i in range(24)] + [999.0, 5.0],
+                          "date": ["2026-10-02"] * 26}), "b")
+    cfg = PairConfig(left="a", right="b", keys=[KeySpec("ref", "ref", "exact", "exact")], left_amount="amount",
+                     right_amount="amount", left_date="date", right_date="date")
+    res = {"a⟷b": reconcile(a, b, cfg)}
+    out = tmp_path / "r.xlsx"
+    write_excel(str(out), {"a": a, "b": b}, res, None, include=list(SHEETS))
+    sheets = pd.read_excel(out, sheet_name=None)
+    assert {"Matched", "Exceptions"} <= set(sheets)
+    for name, df in sheets.items():
+        assert len(df), name
+        blank = [c for c in df.columns if df[c].isna().all()]
+        assert not blank, (name, blank)
+    exc = sheets["Exceptions"]
+    assert set(exc.columns) >= {"Key", "Where", "Reason", "Action"}
+    assert exc["Reason"].iloc[0] == "No clear reason"        # unexplained first
+
+
+def test_charge_added_on_top_is_applied():
+    from anyrecon.chain import reconcile_auto
+    ids = [f"TX{1000 + i}" for i in range(30)]
+    gross = [200.0 + 7 * i for i in range(30)]
+    a = _ds(pd.DataFrame({"ref": ids, "amount": gross}), "a")
+    b = _ds(pd.DataFrame({"ref": ids, "amount": [round(g * 1.02, 2) for g in gross]}), "b")
+    cfg = PairConfig(left="a", right="b", keys=[KeySpec("ref", "ref", "exact", "exact")], left_amount="amount", right_amount="amount")
+    res = reconcile_auto(a, b, cfg)
+    assert res.config.expected_fee_pct == -2.0
+    assert res.summary["matched_groups"] == 30
+
+
+def test_exception_outside_other_files_dates_gets_reason():
+    from anyrecon.export import tables
+    ids = [f"TX{1000 + i}" for i in range(20)]
+    a = _ds(pd.DataFrame({"ref": ids, "amount": [50.0] * 20,
+                          "date": ["2026-10-05"] * 19 + ["2026-11-01"]}), "a")
+    b = _ds(pd.DataFrame({"ref": ids[:19], "amount": [50.0] * 19, "date": ["2026-10-05"] * 19}), "b")
+    cfg = PairConfig(left="a", right="b", keys=[KeySpec("ref", "ref", "exact", "exact")], left_amount="amount",
+                     right_amount="amount", left_date="date", right_date="date")
+    t = tables({"a": a, "b": b}, {"a⟷b": reconcile(a, b, cfg)})
+    row = t["exceptions"].iloc[0]
+    assert row["Key"] == "TX1019" and row["Where"] == "Only in a"
+    assert row["Reason"].startswith("Outside b's dates") and "next" in row["Action"]

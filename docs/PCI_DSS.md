@@ -20,7 +20,7 @@ writing, template saving or any AI call. Nothing downstream ever sees a full PAN
 
 | Detected | Action | Where it's logged |
 |---|---|---|
-| CVV/CVC column (by name + 3–4 digit values) | Column dropped | PCI log sheet + audit JSON |
+| CVV/CVC column (by name + 3–4 digit values) | Column dropped | File card on screen + audit trail |
 | PIN / PIN block / track data (by name or track-data pattern) | Column dropped | same |
 | Column of full PANs (Luhn-valid, card-network prefix) | Masked to first 6 / last 4, plus a keyed HMAC-SHA256 token column so card number can still be a matching key | same |
 | PAN inside free text (narrations, notes) | Masked in place | same |
@@ -32,7 +32,7 @@ writing, template saving or any AI call. Nothing downstream ever sees a full PAN
 
 There is **no "accept" prompt for confirmed card numbers or labelled CVV/PIN/track data**. Keeping them
 unmasked is never a legitimate option for a reconciliation output, so asking would only invite a wrong
-click. The tool acts and tells you: a banner at the top, details per file, and a PCI log sheet in the report.
+click. The tool acts and tells you: a banner at the top, details on each file's card, and the full log in the optional audit trail (no card data in it).
 
 You are asked **only where the tool is genuinely unsure**:
 

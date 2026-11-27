@@ -134,8 +134,8 @@ Code: `anyrecon/pci.py`, function `guard()`. It runs on every dataset straight a
 | **Unlabelled columns next to card numbers** that look like CVVs (3–4 digits, generic or hinting name) or PIN blocks (16 hex characters) | Only checked when the file has card numbers. | **Removed to be safe**, with an option for you to restore it after confirming it isn't card security data. Your decision is recorded in the report. |
 
 Every action is recorded as a *finding* (`models.Finding`): column, kind, action, count, explanation. Findings
-never contain the sensitive values themselves. They appear on the file cards, in the Excel report's "PCI log"
-sheet and in the audit JSON.
+never contain the sensitive values themselves. They appear on the file cards and in the optional
+audit trail.
 
 ### Modes
 
@@ -479,12 +479,12 @@ and further with more memory.
 | 50,000 | 7.5 MB | 57 s | 25 s | 0.4 GB |
 | 100,000 | 15 MB | 1.8 min | 48 s | 0.6 GB |
 | 250,000 | 37 MB | 4.2 min | 2.0 min | 1.3 GB |
-| 500,000 | 75 MB | 8.9 min, close to its memory limit | 4.1 min | 2.4 GB |
-| 1,000,000 | 150 MB | Doesn't fit (see below) | 8.4 min | 4.7 GB |
+| 500,000 | 75 MB | 8.9 min, close to its memory limit | 3.8 min | 2.7 GB |
+| 1,000,000 | 150 MB | Doesn't fit (see below) | 8.0 min | 5.3 GB |
 
 **Why the web app stops sooner.** The web app's engine runs inside the browser, which gives it at most 4 GB of
 memory per tab, whatever the computer has. At 500,000 rows per file the browser used about 3.7 GB; 1,000,000 rows
-need about 4.7 GB even in the more frugal download version, so they don't fit (an estimate from the measurements
+need about 5.3 GB even in the more frugal download version, so they don't fit (an estimate from the measurements
 above, not a crash test). It is also about twice as slow: the same Python code runs compiled for the browser. The
 installed app is the same engine in its own window, with the same limits. The download version uses the
 computer's own Python, so it can use all of the computer's memory.
@@ -497,7 +497,8 @@ version, so the table can be extended in a straight line.
 - *Rows per file* is the length of each of the three files; the total is three times that.
 - Times are end to end, from choosing the files to seeing results, on a modest machine (2 CPU cores, 8 GB of
   memory); the web app's one-off engine start on first visit (about 20 s) isn't included. A recent laptop is faster.
-- Measured 16 Nov 2026, version 0.3.0.
+- Measured 16 Nov 2026 (version 0.3.0); the download version's 500,000 and 1,000,000 rows re-measured 27 Nov
+  (0.3.1), after the report change.
 - Two files are quicker than three: one connection to propose and match instead of two. Wide files (many columns)
   take longer than narrow ones, and PDFs are slower to read than CSV or Excel (about a tenth of a second per page).
 - The Excel report holds up to 1,048,576 rows per sheet; longer tables continue on extra sheets.
@@ -568,21 +569,40 @@ Reports welcome.
 
 ## Outputs
 
-**Excel report** (`report.write_excel`):
+**Excel report** (`report.write_excel`, tables built in `anyrecon/export.py`). The user picks the sheets under
+**Download report**; Matched and Exceptions are ticked by default. Sheets that don't apply to the run aren't offered.
 
-| Sheet | Contents |
+| Sheet | Default | Contents |
+|---|---|---|
+| **Matched** | ✓ | Records that link and agree: key, date and amount on each side, how they were linked, and a group number when one record links to several. |
+| **Exceptions** | ✓ | Everything that didn't reconcile, one row each: key, where (only in one file, or in both but different), date and amount on each side, the **likely reason** and the **action**. Rows with no clear reason come first: those are the true exceptions. |
+| Groups | optional; offered when some links aren't one-to-one | Each reference that links more than one record: how many records on each side, totals, whether they agree. |
+| Overview | optional | Counts for each comparison: records, matched, different, only in each file, with a likely reason, no clear reason. |
+| Only in each file | optional | The full original rows found in one file only. |
+| Across all files | optional; offered with 3+ files | Each record traced across every file. |
+
+With one comparison, columns carry the file names ("Amount (processor)"). With several, they share one sheet, the
+columns say A and B, and a **Compared** column names the files ("processor (A) ↔ bank (B)").
+
+**Reasons the Exceptions sheet gives today**, each with its action:
+
+| Reason | Action |
 |---|---|
-| Summary | One row per connection: rows, matched groups, exceptions, match rates by count and value, totals; then the insights. |
-| Chains | The chain view (when there are 3+ files). |
-| `<pair> matches` | Every match: id, tier, cardinality (1:1, 1:n…), status, key, rows on each side, amounts, expected amount after fee, difference, date gap, confidence, rule. |
-| `<pair> exceptions` | Every break with category, rows, amounts, reason and suggestion. |
-| `<pair> L-only` / `R-only` | The unmatched rows themselves (masked). |
-| PCI log | Every card-data action. |
-| Audit | Engine version, run time, each input's name, SHA-256 hash, rows and format, parsing notes, and each connection's full setup. |
+| Amount differs in line with the file-wide percentage the matcher found (a fee taken or a charge added) | Confirm the rate is agreed |
+| Timing: dates N days apart (beyond the date window) | Confirm the dates; it should clear |
+| Dated outside the other file's date range | Check the next (or previous) file |
+| Possible typo: a near-identical reference on the other side | Check the reference |
+| Same reference appears more than once | Check for a duplicate entry |
+| Several possible matches with the same amount and date | Choose the right match |
+| Read from a scan with low confidence | Check against the original |
+| **No clear reason** | **Investigate** |
+
+When a percentage difference is consistent across a file, it is applied automatically (in either direction) and
+those records move to Matched, with "2% higher in bank" in **Linked by**.
 
 The report contains rows from your files (with card numbers masked), so treat it like the source files.
 
-**Audit trail (JSON)** (`report.audit_json`): engine and Python version, run time, each input's hash, rows,
+**Audit trail (JSON, optional tick under Download report)** (`report.audit_json`): engine and Python version, run time, each input's hash, rows,
 format, column fingerprint, notes and card-data findings, and each connection's setup, summary and insights.
 **No row data.**
 

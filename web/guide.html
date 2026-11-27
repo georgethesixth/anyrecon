@@ -260,8 +260,8 @@ file holds the original, before masking.</p>
 </tbody>
 </table>
 <p>Every action is recorded as a <em>finding</em> (<code>models.Finding</code>): column, kind, action, count, explanation. Findings
-never contain the sensitive values themselves. They appear on the file cards, in the Excel report's "PCI log"
-sheet and in the audit JSON.</p>
+never contain the sensitive values themselves. They appear on the file cards and in the optional
+audit trail.</p>
 <h3 id="modes">Modes</h3>
 <table>
 <thead>
@@ -749,21 +749,21 @@ and further with more memory.</p>
 <td>500,000</td>
 <td>75 MB</td>
 <td>8.9 min, close to its memory limit</td>
-<td>4.1 min</td>
-<td>2.4 GB</td>
+<td>3.8 min</td>
+<td>2.7 GB</td>
 </tr>
 <tr>
 <td>1,000,000</td>
 <td>150 MB</td>
 <td>Doesn't fit (see below)</td>
-<td>8.4 min</td>
-<td>4.7 GB</td>
+<td>8.0 min</td>
+<td>5.3 GB</td>
 </tr>
 </tbody>
 </table>
 <p><strong>Why the web app stops sooner.</strong> The web app's engine runs inside the browser, which gives it at most 4 GB of
 memory per tab, whatever the computer has. At 500,000 rows per file the browser used about 3.7 GB; 1,000,000 rows
-need about 4.7 GB even in the more frugal download version, so they don't fit (an estimate from the measurements
+need about 5.3 GB even in the more frugal download version, so they don't fit (an estimate from the measurements
 above, not a crash test). It is also about twice as slow: the same Python code runs compiled for the browser. The
 installed app is the same engine in its own window, with the same limits. The download version uses the
 computer's own Python, so it can use all of the computer's memory.</p>
@@ -774,7 +774,8 @@ version, so the table can be extended in a straight line.</p>
 <li><em>Rows per file</em> is the length of each of the three files; the total is three times that.</li>
 <li>Times are end to end, from choosing the files to seeing results, on a modest machine (2 CPU cores, 8 GB of
   memory); the web app's one-off engine start on first visit (about 20 s) isn't included. A recent laptop is faster.</li>
-<li>Measured 16 Nov 2026, version 0.3.0.</li>
+<li>Measured 16 Nov 2026 (version 0.3.0); the download version's 500,000 and 1,000,000 rows re-measured 27 Nov
+  (0.3.1), after the report change.</li>
 <li>Two files are quicker than three: one connection to propose and match instead of two. Wide files (many columns)
   take longer than narrow ones, and PDFs are slower to read than CSV or Excel (about a tenth of a second per page).</li>
 <li>The Excel report holds up to 1,048,576 rows per sheet; longer tables continue on extra sheets.</li>
@@ -891,47 +892,98 @@ sets itself up again. What changed in each version: <a href="https://anyrecon.ve
 Windows and Mac launchers follow the same steps but have not yet been run on real machines by the maintainer.
 Reports welcome.</p>
 <h2 id="outputs">Outputs</h2>
-<p><strong>Excel report</strong> (<code>report.write_excel</code>):</p>
+<p><strong>Excel report</strong> (<code>report.write_excel</code>, tables built in <code>anyrecon/export.py</code>). The user picks the sheets under
+<strong>Download report</strong>; Matched and Exceptions are ticked by default. Sheets that don't apply to the run aren't offered.</p>
 <table>
 <thead>
 <tr>
 <th>Sheet</th>
+<th>Default</th>
 <th>Contents</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Summary</td>
-<td>One row per connection: rows, matched groups, exceptions, match rates by count and value, totals; then the insights.</td>
+<td><strong>Matched</strong></td>
+<td>✓</td>
+<td>Records that link and agree: key, date and amount on each side, how they were linked, and a group number when one record links to several.</td>
 </tr>
 <tr>
-<td>Chains</td>
-<td>The chain view (when there are 3+ files).</td>
+<td><strong>Exceptions</strong></td>
+<td>✓</td>
+<td>Everything that didn't reconcile, one row each: key, where (only in one file, or in both but different), date and amount on each side, the <strong>likely reason</strong> and the <strong>action</strong>. Rows with no clear reason come first: those are the true exceptions.</td>
 </tr>
 <tr>
-<td><code>&lt;pair&gt; matches</code></td>
-<td>Every match: id, tier, cardinality (1:1, 1:n…), status, key, rows on each side, amounts, expected amount after fee, difference, date gap, confidence, rule.</td>
+<td>Groups</td>
+<td>optional; offered when some links aren't one-to-one</td>
+<td>Each reference that links more than one record: how many records on each side, totals, whether they agree.</td>
 </tr>
 <tr>
-<td><code>&lt;pair&gt; exceptions</code></td>
-<td>Every break with category, rows, amounts, reason and suggestion.</td>
+<td>Overview</td>
+<td>optional</td>
+<td>Counts for each comparison: records, matched, different, only in each file, with a likely reason, no clear reason.</td>
 </tr>
 <tr>
-<td><code>&lt;pair&gt; L-only</code> / <code>R-only</code></td>
-<td>The unmatched rows themselves (masked).</td>
+<td>Only in each file</td>
+<td>optional</td>
+<td>The full original rows found in one file only.</td>
 </tr>
 <tr>
-<td>PCI log</td>
-<td>Every card-data action.</td>
-</tr>
-<tr>
-<td>Audit</td>
-<td>Engine version, run time, each input's name, SHA-256 hash, rows and format, parsing notes, and each connection's full setup.</td>
+<td>Across all files</td>
+<td>optional; offered with 3+ files</td>
+<td>Each record traced across every file.</td>
 </tr>
 </tbody>
 </table>
+<p>With one comparison, columns carry the file names ("Amount (processor)"). With several, they share one sheet, the
+columns say A and B, and a <strong>Compared</strong> column names the files ("processor (A) ↔ bank (B)").</p>
+<p><strong>Reasons the Exceptions sheet gives today</strong>, each with its action:</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Amount differs in line with the file-wide percentage the matcher found (a fee taken or a charge added)</td>
+<td>Confirm the rate is agreed</td>
+</tr>
+<tr>
+<td>Timing: dates N days apart (beyond the date window)</td>
+<td>Confirm the dates; it should clear</td>
+</tr>
+<tr>
+<td>Dated outside the other file's date range</td>
+<td>Check the next (or previous) file</td>
+</tr>
+<tr>
+<td>Possible typo: a near-identical reference on the other side</td>
+<td>Check the reference</td>
+</tr>
+<tr>
+<td>Same reference appears more than once</td>
+<td>Check for a duplicate entry</td>
+</tr>
+<tr>
+<td>Several possible matches with the same amount and date</td>
+<td>Choose the right match</td>
+</tr>
+<tr>
+<td>Read from a scan with low confidence</td>
+<td>Check against the original</td>
+</tr>
+<tr>
+<td><strong>No clear reason</strong></td>
+<td><strong>Investigate</strong></td>
+</tr>
+</tbody>
+</table>
+<p>When a percentage difference is consistent across a file, it is applied automatically (in either direction) and
+those records move to Matched, with "2% higher in bank" in <strong>Linked by</strong>.</p>
 <p>The report contains rows from your files (with card numbers masked), so treat it like the source files.</p>
-<p><strong>Audit trail (JSON)</strong> (<code>report.audit_json</code>): engine and Python version, run time, each input's hash, rows,
+<p><strong>Audit trail (JSON, optional tick under Download report)</strong> (<code>report.audit_json</code>): engine and Python version, run time, each input's hash, rows,
 format, column fingerprint, notes and card-data findings, and each connection's setup, summary and insights.
 <strong>No row data.</strong></p>
 <p><strong>Setup file</strong> (<code>templates.py</code>, Advanced → Save setup): file names, column names, layout fingerprints and the
@@ -1170,6 +1222,6 @@ local AI option with no data leaving the machine; saved setups selectable from t
 <p class="g-edit">This page is generated from <a href="https://github.com/georgethesixth/anyrecon/blob/main/docs/GUIDE.md" target="_blank" rel="noopener">docs/GUIDE.md</a>.
 Found something wrong or out of date? <a href="https://github.com/georgethesixth/anyrecon/edit/main/docs/GUIDE.md" target="_blank" rel="noopener">Edit it on GitHub</a>.</p>
 </main>
-<div class="ar-wrap"><footer class="ar-foot"><span>anyrecon 0.3.0 · updated 16 Nov 2026 · <a href="https://anyrecon.vercel.app/changelog.html" target="_blank" rel="noopener">What's new</a></span><span>A project by <a href="https://kemdi.co" target="_blank" rel="noopener">Kemdi Okoli</a> · <a href="https://anyrecon.vercel.app/guide.html" target="_blank" rel="noopener">Guide</a> · <a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">Source on GitHub</a></span></footer></div>
+<div class="ar-wrap"><footer class="ar-foot"><span>anyrecon 0.3.1 · updated 27 Nov 2026 · <a href="https://anyrecon.vercel.app/changelog.html" target="_blank" rel="noopener">What's new</a></span><span>A project by <a href="https://kemdi.co" target="_blank" rel="noopener">Kemdi Okoli</a> · <a href="https://anyrecon.vercel.app/guide.html" target="_blank" rel="noopener">Guide</a> · <a href="https://github.com/georgethesixth/anyrecon" target="_blank" rel="noopener">Source on GitHub</a></span></footer></div>
 </body>
 </html>

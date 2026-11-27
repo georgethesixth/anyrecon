@@ -115,13 +115,43 @@ def main() -> int:
         print(f"results after {time.time() - t0:.0f}s: " + (f"{summary.group(1)} matched, {summary.group(2)} exceptions" if summary else "?"))
         if not re.search(r"[1-9][\d,]* matched", body):
             problems.append("no matches in results")
-        with pg.expect_download(timeout=60000) as dl:
-            pg.get_by_role("button", name="Excel report").click()
-        path = Path("/tmp") / dl.value.suggested_filename
-        dl.value.save_as(path)
-        import openpyxl
-        sheets = openpyxl.load_workbook(path).sheetnames
-        print(f"Excel report: {len(sheets)} sheets ({', '.join(sheets[:3])}, …)")
+        # The report: default sheets, then with every optional sheet ticked. Opened and checked cell by cell,
+        # because a report can have the right sheets and still be blank (the 0.3.0 bug).
+        import pandas as pd
+
+        def download(label):
+            with pg.expect_download(timeout=120000) as dl:
+                pg.get_by_role("button", name=label).click()
+            path = Path("/tmp") / f"check_{dl.value.suggested_filename}"
+            dl.value.save_as(path)
+            return path
+
+        def check_report(path, expect):
+            sheets = pd.read_excel(path, sheet_name=None)
+            missing = [s for s in expect if s not in sheets]
+            if missing:
+                problems.append(f"report is missing sheets {missing}")
+            for name, df in sheets.items():
+                if not len(df):
+                    problems.append(f"report sheet '{name}' is empty")
+                blank = [c for c in df.columns if df[c].isna().all()]
+                if blank and not name.startswith("Only in"):
+                    problems.append(f"report sheet '{name}' has empty columns {blank}")
+            return sheets
+
+        pg.get_by_role("button", name="Download report").click()
+        pg.wait_for_timeout(1500)
+        sheets = check_report(download("Download Excel"), ["Matched", "Exceptions"])
+        print(f"report (default): {', '.join(f'{k} {len(v):,} rows' for k, v in sheets.items())}")
+        for box in pg.locator('[data-testid="stPopoverBody"] [data-testid="stCheckbox"] input').all():
+            if not box.is_checked():
+                box.check(force=True)
+                pg.wait_for_timeout(1200)
+        pg.wait_for_timeout(2500)
+        sheets = check_report(download("Download Excel"), ["Matched", "Exceptions", "Overview"])
+        print(f"report (everything ticked): {len(sheets)} sheets: {', '.join(sheets)}")
+        download("Download audit trail")
+        pg.keyboard.press("Escape")
         tab = pg.get_by_role("tab", name="All documents")
         if tab.count():
             tab.click()

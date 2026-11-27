@@ -30,6 +30,7 @@ from anyrecon.ingest import UnreadableFile, list_sheets, load, load_each_sheet
 from anyrecon.match import KeySpec
 from anyrecon.pci import PCIBlocked
 from anyrecon.profile import pick_amount, pick_date, profile
+from anyrecon.export import DEFAULT as EXPORT_DEFAULT, SHEETS as EXPORT_SHEETS, available
 from anyrecon.report import audit_json, write_excel
 
 import ui_theme as ui
@@ -97,7 +98,8 @@ def _rule_line(cfg):
                     else f"{k.left_col} ~ {k.right_col}")
     parts = ["Matched on " + (", then ".join(keys) if keys else "amount and date")]
     if cfg.expected_fee_pct:
-        parts.append(f"{cfg.expected_fee_pct:g}% fee deducted in {cfg.right} (detected)")
+        f = cfg.expected_fee_pct
+        parts.append(f"{abs(f):g}% {'fee taken' if f > 0 else 'charge added'} in {cfg.right} (detected)")
     return " · ".join(parts)
 
 
@@ -441,21 +443,34 @@ tot_x = sum(len(r.exceptions) for r in results.values())
 h1, h2 = st.columns([3, 2], vertical_alignment="bottom")
 h1.markdown(f'<div class="ar-results"><h2>Results</h2><p>{len(results)} pair{"s" if len(results) != 1 else ""} · '
             f'{tot_m:,} matched · {tot_x:,} exception{"s" if tot_x != 1 else ""}</p></div>', unsafe_allow_html=True)
-# Build the report and audit file once per run (not on every screen refresh: at 100k+ rows that takes seconds).
-if ss.get("report_sig") != ss.run_sig:
-    with st.spinner("Preparing the Excel report…"):
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as fh:
-            pass
-        try:
-            write_excel(fh.name, ss.datasets, results, chain)
-            ss.report_xlsx = Path(fh.name).read_bytes()
-        finally:
-            Path(fh.name).unlink(missing_ok=True)
-        ss.report_audit = json.dumps(audit_json(ss.datasets, results), indent=2, default=str)
-    ss.report_sig = ss.run_sig
+EXPORT_HELP = {"matched": "records that link and agree", "exceptions": "everything that didn't reconcile, with the likely reason",
+               "groups": "references that link more than one record", "overview": "counts for each comparison",
+               "only": "the full rows found in one file only", "across": "each record and which files it appears in"}
 with h2.container(key="downloads", horizontal=True, horizontal_alignment="right"):
-    st.download_button("Excel report", ss.report_xlsx, "recon_report.xlsx", type="primary")
-    st.download_button("Audit trail", ss.report_audit, "recon_audit.json")
+    with st.popover("Download report", type="primary"):
+        st.markdown("**Include**")
+        avail = available(results, chain)
+        picked = [k for k in avail if st.checkbox(f"{EXPORT_SHEETS[k]}: {EXPORT_HELP[k]}", value=k in EXPORT_DEFAULT, key=f"inc_{k}")]
+        want_audit = st.checkbox("Audit trail: which files and settings were used, no data (separate file)", value=False, key="inc_audit")
+        sig = (ss.run_sig, tuple(picked))
+        if picked and ss.get("report_sig") != sig:
+            # Built only when the run or the choice changes, not on every screen refresh.
+            with st.spinner("Preparing the report…"):
+                with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as fh:
+                    pass
+                try:
+                    write_excel(fh.name, ss.datasets, results, chain, include=picked)
+                    ss.report_xlsx = Path(fh.name).read_bytes()
+                finally:
+                    Path(fh.name).unlink(missing_ok=True)
+            ss.report_sig = sig
+        if picked:
+            st.download_button("Download Excel", ss.report_xlsx, "recon_report.xlsx", type="primary", use_container_width=True)
+        else:
+            st.caption("Tick at least one sheet.")
+        if want_audit:
+            st.download_button("Download audit trail", json.dumps(audit_json(ss.datasets, results), indent=2, default=str),
+                               "recon_audit.json", use_container_width=True)
     if ADV:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as fh:
             pass
